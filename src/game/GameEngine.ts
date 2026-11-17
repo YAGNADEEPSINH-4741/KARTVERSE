@@ -335,10 +335,10 @@ export class GameEngine {
     this.camera.lookAt(this.cameraLookTarget);
     this.isCameraInitialized = true;
 
-    const localPlayerId = isMultiplayer ? socketManager.getSocketId() || 'local_player' : 'local_player';
+    const localPlayerId = 'local_player';
     this.lapManager.registerRacer(localPlayerId, store.profile.username || 'You');
 
-    // 5. Single-Player: 7 AI Opponents
+    // 5. Populate Grid: Opponents (AI and/or Remote Players)
     if (!isMultiplayer) {
       const racingPath = new RacingPath(this.trackManager.curve, this.trackManager.config.roadWidth);
 
@@ -360,6 +360,52 @@ export class GameEngine {
         this.aiRacers.push(ai);
       }
     } else {
+      // Register all other multiplayer participants from room
+      const localId = socketManager.getLocalPlayerId();
+      const remoteRoomPlayers = store.roomPlayers.filter(p => p.id !== localId);
+
+      remoteRoomPlayers.forEach((player, idx) => {
+        const slot = grid[idx + 1] || grid[1];
+        const entity = this.networkSync.registerRemotePlayer(
+          player.id,
+          player.kartId || 'velocity_gt',
+          player.kartColor || '#00f0ff',
+          player.username,
+          player.isHost
+        );
+        entity.currentPosition.copy(slot.position);
+        entity.targetPosition.copy(slot.position);
+        entity.currentRotationY = slot.rotationY;
+        entity.targetRotationY = slot.rotationY;
+        entity.visual.group.position.copy(slot.position);
+        entity.visual.group.rotation.y = slot.rotationY;
+
+        this.lapManager.registerRacer(player.id, player.username || `Racer ${idx + 2}`);
+      });
+
+      // If room has fewer than 8 racers, fill remaining slots with AI racers so race is always full
+      const startingAISlot = remoteRoomPlayers.length + 1;
+      if (startingAISlot < 8) {
+        const racingPath = new RacingPath(this.trackManager.curve, this.trackManager.config.roadWidth);
+        for (let i = startingAISlot; i < 8; i++) {
+          const slot = grid[i];
+          const profile = AI_ROSTER[i - 1];
+          const ai = new AIRacer(
+            this.scene,
+            profile,
+            racingPath,
+            store.aiDifficulty,
+            slot.position,
+            slot.rotationY
+          );
+          ai.physics.roadElevation = this.trackManager.getRoadHeightAt(slot.position);
+          ai.physics.position.y = ai.physics.roadElevation + 0.25;
+
+          this.lapManager.registerRacer(ai.profile.id, ai.profile.name);
+          this.aiRacers.push(ai);
+        }
+      }
+
       socketManager.onRemoteTelemetry = (packet) => {
         this.networkSync.handleTelemetry(packet);
       };
@@ -627,6 +673,8 @@ export class GameEngine {
 
     // 11. Update HUD Speedometer & Minimap Coordinates
     const mapRacers = racerPositions.map(r => ({
+      id: r.id,
+      name: this.lapManager.getProgress(r.id)?.name || (r.id === 'local_player' ? (store.profile.username || 'You') : 'Racer'),
       x: r.position.x,
       z: r.position.z,
       isPlayer: r.id === 'local_player'

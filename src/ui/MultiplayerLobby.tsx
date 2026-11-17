@@ -27,6 +27,15 @@ export const MultiplayerLobby: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyCode = () => {
+    if (roomCode) {
+      navigator.clipboard.writeText(roomCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const handleCreateRoom = async () => {
     try {
@@ -111,6 +120,13 @@ export const MultiplayerLobby: React.FC = () => {
             <span className="text-2xl font-mono font-black text-yellow-300 tracking-widest">
               {roomCode}
             </span>
+            <button
+              onClick={handleCopyCode}
+              className="px-2.5 py-1 rounded-lg bg-purple-600/60 hover:bg-purple-500 text-xs font-bold text-white uppercase transition-all cursor-pointer"
+              title="Copy Room Code"
+            >
+              {copied ? '✓ COPIED' : '📋 COPY'}
+            </button>
           </div>
         )}
       </div>

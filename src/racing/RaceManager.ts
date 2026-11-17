@@ -109,6 +109,15 @@ export class RaceManager {
     const currentLap = localProg ? localProg.lap : 1;
     const bestLapTime = localProg ? localProg.bestLapTime : 0;
 
+    // Build real-time leaderboard list for HUD standings
+    const leaderboard = this.ranks.map(r => ({
+      id: r.id,
+      name: r.name,
+      rank: r.rank,
+      lap: r.lap,
+      isPlayer: r.id === localPlayerId
+    }));
+
     // Update telemetry in Zustand
     useGameStore.getState().setTelemetry({
       position: localRank,
@@ -117,7 +126,8 @@ export class RaceManager {
       totalLaps: 3,
       raceTime: this.totalRaceTime,
       bestLapTime,
-      isWrongWay
+      isWrongWay,
+      leaderboard
     });
 
     return {

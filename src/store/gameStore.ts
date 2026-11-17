@@ -22,6 +22,15 @@ export type RaceStatus = 'IDLE' | 'COUNTDOWN' | 'RACING' | 'FINISHED' | 'PAUSED'
 export type AIDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 export type GraphicsQuality = 'low' | 'medium' | 'high' | 'ultra';
 
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  rank: number;
+  lap: number;
+  isPlayer: boolean;
+  isHost?: boolean;
+}
+
 export interface RaceTelemetry {
   position: number;
   totalRacers: number;
@@ -35,10 +44,11 @@ export interface RaceTelemetry {
   bestLapTime: number;
   countdownNumber: number | null; // 3, 2, 1, 0 (GO)
   isWrongWay: boolean;
-  racerPositions?: { x: number; z: number; isPlayer: boolean }[];
+  racerPositions?: { x: number; z: number; isPlayer: boolean; id?: string; name?: string; kartColor?: string }[];
   isReversing?: boolean;
   isNitroActive?: boolean;
   miniTurboNotification?: string | null;
+  leaderboard?: LeaderboardEntry[];
 }
 
 export interface MultiplayerPlayer {
