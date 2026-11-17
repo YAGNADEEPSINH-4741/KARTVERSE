@@ -115,7 +115,7 @@ export const useGameStore = create<GameState>((set) => ({
   raceMode: 'QUICK_RACE',
   raceStatus: 'IDLE',
   selectedKart: 'speed_demon',
-  kartColor: '#ff0055',
+  kartColor: '#00d2ff',
   selectedTrack: 'sunset_coast',
   aiDifficulty: 'MEDIUM',
   profile: AuthService.getOrCreateGuest(),

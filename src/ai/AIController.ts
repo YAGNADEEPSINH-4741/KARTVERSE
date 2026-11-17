@@ -19,13 +19,13 @@ export interface AIRacerProfile {
 }
 
 export const AI_ROSTER: AIRacerProfile[] = [
-  { id: 'ai_1', name: 'Blaze Nitro', kartId: 'speed_demon', color: '#ff3b30', aggression: 0.9, skill: 0.95 },
+  { id: 'ai_1', name: 'Blaze Nitro', kartId: 'speed_demon', color: '#0284c7', aggression: 0.9, skill: 0.95 },
   { id: 'ai_2', name: 'Cyber Phantom', kartId: 'cyber_glider', color: '#00f0ff', aggression: 0.8, skill: 0.88 },
-  { id: 'ai_3', name: 'Titan Rex', kartId: 'vortex_striker', color: '#ff9500', aggression: 0.85, skill: 0.82 },
-  { id: 'ai_4', name: 'Luna Swift', kartId: 'quantum_leap', color: '#af52de', aggression: 0.75, skill: 0.85 },
-  { id: 'ai_5', name: 'Solar Apex', kartId: 'hyper_drift', color: '#ffcc00', aggression: 0.7, skill: 0.78 },
-  { id: 'ai_6', name: 'Viper Drift', kartId: 'shadow_phantom', color: '#34c759', aggression: 0.8, skill: 0.80 },
-  { id: 'ai_7', name: 'Frost Bite', kartId: 'speed_demon', color: '#5856d6', aggression: 0.65, skill: 0.75 }
+  { id: 'ai_3', name: 'Titan Rex', kartId: 'vortex_striker', color: '#f59e0b', aggression: 0.85, skill: 0.82 },
+  { id: 'ai_4', name: 'Luna Swift', kartId: 'quantum_leap', color: '#06b6d4', aggression: 0.75, skill: 0.85 },
+  { id: 'ai_5', name: 'Solar Apex', kartId: 'hyper_drift', color: '#eab308', aggression: 0.7, skill: 0.78 },
+  { id: 'ai_6', name: 'Viper Drift', kartId: 'shadow_phantom', color: '#10b981', aggression: 0.8, skill: 0.80 },
+  { id: 'ai_7', name: 'Frost Bite', kartId: 'speed_demon', color: '#38bdf8', aggression: 0.65, skill: 0.75 }
 ];
 
 export class AIRacer {

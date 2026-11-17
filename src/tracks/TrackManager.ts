@@ -146,56 +146,50 @@ export class TrackManager {
 
     switch (this.config.theme) {
       case 'CYBER':
-        grad.addColorStop(0.0, '#020409');   // Zenith: Void black
-        grad.addColorStop(0.2, '#0b0f24');   // Deep cyber navy
-        grad.addColorStop(0.4, '#2e1065');   // Neon violet
-        grad.addColorStop(0.48, '#701a75');  // Electric magenta
-        grad.addColorStop(0.50, '#00f0ff');  // Horizon: Cyan glow
-        grad.addColorStop(0.52, '#083344');  // Lower shimmer
+        grad.addColorStop(0.0, '#020617');   // Midnight Navy
+        grad.addColorStop(0.25, '#07152b');  // Deep Royal Blue
+        grad.addColorStop(0.44, '#0c274e');  // Vibrant Night Sky
+        grad.addColorStop(0.50, '#00f0ff');  // Horizon: Electric Cyan Glow
+        grad.addColorStop(0.53, '#0284c7');
         grad.addColorStop(1.0, '#020617');
         break;
 
       case 'FOREST':
-        grad.addColorStop(0.0, '#02130c');   // Twilight emerald
-        grad.addColorStop(0.25, '#062d1f');  // Deep pine
-        grad.addColorStop(0.40, '#064e3b');  // Royal jade
-        grad.addColorStop(0.48, '#0f766e');  // Enchanted teal
-        grad.addColorStop(0.50, '#10b981');  // Horizon: Jade mist
-        grad.addColorStop(0.53, '#064e3b');
+        grad.addColorStop(0.0, '#022c22');   // Deep Forest Pine
+        grad.addColorStop(0.25, '#064e3b');  // Rich Emerald Canopy
+        grad.addColorStop(0.42, '#059669');  // Sunlit Forest Green
+        grad.addColorStop(0.50, '#6ee7b7');  // Horizon: Golden Meadow Glow
+        grad.addColorStop(0.53, '#047857');
         grad.addColorStop(1.0, '#022c22');
         break;
 
       case 'LAVA':
-        grad.addColorStop(0.0, '#0c0404');   // Volcanic obsidian
-        grad.addColorStop(0.22, '#2a0808');  // Ash charcoal
-        grad.addColorStop(0.38, '#7f1d1d');  // Deep crimson
-        grad.addColorStop(0.46, '#dc2626');  // Molten magma
-        grad.addColorStop(0.50, '#f97316');  // Horizon: Blaze amber
-        grad.addColorStop(0.53, '#7f1d1d');
-        grad.addColorStop(1.0, '#1c0505');
+        grad.addColorStop(0.0, '#0c0a09');   // Dark Obsidian Zenith
+        grad.addColorStop(0.25, '#1c1917');  // Deep Basalt
+        grad.addColorStop(0.42, '#78350f');  // Warm Copper Atmosphere
+        grad.addColorStop(0.50, '#f59e0b');  // Horizon: Golden Molten Amber Glow
+        grad.addColorStop(0.53, '#b45309');
+        grad.addColorStop(1.0, '#0c0a09');
         break;
 
       case 'ICE':
-        grad.addColorStop(0.0, '#08121e');   // Midnight tundra
-        grad.addColorStop(0.22, '#0c2d48');  // Arctic cobalt
-        grad.addColorStop(0.38, '#0284c7');  // Glacial azure
-        grad.addColorStop(0.46, '#38bdf8');  // Polar ice
-        grad.addColorStop(0.50, '#bae6fd');  // Horizon: Aurora glow
-        grad.addColorStop(0.53, '#0284c7');
+        grad.addColorStop(0.0, '#0369a1');   // Crisp Alpine Sky
+        grad.addColorStop(0.25, '#0284c7');  // Glacier Azure
+        grad.addColorStop(0.42, '#38bdf8');  // Polar Daylight
+        grad.addColorStop(0.50, '#e0f2fe');  // Horizon: Pure Snow Peak Glow
+        grad.addColorStop(0.53, '#7dd3fc');
         grad.addColorStop(1.0, '#0369a1');
         break;
 
       case 'BEACH':
       default:
-        grad.addColorStop(0.0, '#0a0e27');   // Zenith: Twilight navy
-        grad.addColorStop(0.18, '#261047');  // Cosmic violet
-        grad.addColorStop(0.32, '#831843');  // Royal fuchsia
-        grad.addColorStop(0.40, '#be123c');  // Sunset crimson
-        grad.addColorStop(0.45, '#ea580c');  // Sunset amber
-        grad.addColorStop(0.485, '#f59e0b'); // Golden orange
-        grad.addColorStop(0.50, '#fef08a');  // Horizon: Sunburst yellow
-        grad.addColorStop(0.53, '#0ea5e9');  // Tropical turquoise
-        grad.addColorStop(1.0, '#0369a1');
+        grad.addColorStop(0.0, '#0369a1');   // Zenith: Crisp Mediterranean Azure
+        grad.addColorStop(0.24, '#0284c7');  // Clear Cerulean Sky
+        grad.addColorStop(0.40, '#38bdf8');  // Sunny Daytime Blue
+        grad.addColorStop(0.47, '#7dd3fc');  // Soft Coastal Atmosphere
+        grad.addColorStop(0.50, '#fef08a');  // Horizon: Warm Golden Sunburst
+        grad.addColorStop(0.53, '#0891b2');  // Tropical Turquoise Waterline
+        grad.addColorStop(1.0, '#0e7490');
         break;
     }
 
@@ -360,20 +354,30 @@ export class TrackManager {
       peakGroup.position.set(x, 0, z);
 
       if (theme === 'BEACH') {
-        // Tropical Volcanic Islands on distant horizon
-        const rock = new THREE.Mesh(
-          new THREE.ConeGeometry(radius * 0.9, height, 8),
-          new THREE.MeshStandardMaterial({ color: 0x574838, roughness: 0.92 })
+        // Lush Tropical Volcanic Islands on distant horizon (Hawaiian style)
+        // Sandy beach base ring at waterline
+        const beachBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 1.05, radius * 1.15, 6, 12),
+          new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.95 })
         );
-        rock.position.y = height / 2;
-        peakGroup.add(rock);
+        beachBase.position.y = 3;
+        peakGroup.add(beachBase);
 
-        const jungleMantle = new THREE.Mesh(
-          new THREE.ConeGeometry(radius * 0.95, height * 0.65, 8),
-          new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.88 })
+        // Coastal warm sandstone/limestone cliff
+        const cliff = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.7, radius * 1.0, height * 0.45, 10),
+          new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.9 })
         );
-        jungleMantle.position.y = height * 0.32;
-        peakGroup.add(jungleMantle);
+        cliff.position.y = height * 0.22;
+        peakGroup.add(cliff);
+
+        // Lush Rainforest Jungle Peak Mantle
+        const junglePeak = new THREE.Mesh(
+          new THREE.ConeGeometry(radius * 0.75, height * 0.7, 10),
+          new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85 })
+        );
+        junglePeak.position.y = height * 0.65;
+        peakGroup.add(junglePeak);
 
       } else if (theme === 'CYBER') {
         // Distant Mega-Skyscrapers with glowing windows
@@ -388,7 +392,7 @@ export class TrackManager {
 
         const neonGlow = new THREE.Mesh(
           new THREE.BoxGeometry(towerW + 2, 6, towerW + 2),
-          new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x00f0ff : 0xff007f })
+          new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x00f0ff : 0xfacc15 })
         );
         neonGlow.position.y = towerH - 8;
         peakGroup.add(neonGlow);
@@ -403,17 +407,17 @@ export class TrackManager {
         peakGroup.add(ridge);
 
       } else if (theme === 'LAVA') {
-        // Smoky Obsidian Volcanoes with glowing craters
+        // Smoky Obsidian Volcanoes with glowing golden amber craters
         const volcano = new THREE.Mesh(
           new THREE.CylinderGeometry(radius * 0.25, radius, height, 10),
-          new THREE.MeshStandardMaterial({ color: 0x221815, roughness: 0.95 })
+          new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95 })
         );
         volcano.position.y = height / 2;
         peakGroup.add(volcano);
 
         const magmaCrater = new THREE.Mesh(
           new THREE.CircleGeometry(radius * 0.22, 10).rotateX(-Math.PI / 2),
-          new THREE.MeshBasicMaterial({ color: 0xff3b00 })
+          new THREE.MeshBasicMaterial({ color: 0xf59e0b })
         );
         magmaCrater.position.y = height + 0.5;
         peakGroup.add(magmaCrater);
@@ -439,10 +443,9 @@ export class TrackManager {
   // --------------------------------------------------------------------------
   private buildClouds(): void {
     const cloudMat = new THREE.MeshStandardMaterial({
-      color: this.config.theme === 'CYBER' ? 0x2e1065 :
-             this.config.theme === 'LAVA' ? 0x451a14 : 0xffedd5,
-      roughness: 0.65,
-      metalness: 0.05
+      color: 0xffffff,
+      roughness: 0.85,
+      metalness: 0.02
     });
 
     const numClouds = 20;
@@ -630,9 +633,9 @@ export class TrackManager {
     }
 
     const barrierMat = new THREE.MeshStandardMaterial({
-      color: 0x1e2433,
-      metalness: 0.85,
-      roughness: 0.35,
+      color: 0x0c192c, // Clean deep navy-carbon racing barrier (no dreary gray)
+      metalness: 0.75,
+      roughness: 0.25,
       side: THREE.DoubleSide
     });
 
@@ -654,11 +657,11 @@ export class TrackManager {
     rightBarrier.receiveShadow = true;
     barrierGroup.add(rightBarrier);
 
-    // Glowing Top Safety Rail (Theme-specific color)
+    // High-Visibility Top Safety Rail (Theme-specific color: No pink/purple/red/gray)
     const railColor = this.config.theme === 'CYBER' ? 0x00f0ff :
-                      this.config.theme === 'FOREST' ? 0x22c55e :
-                      this.config.theme === 'LAVA' ? 0xff4400 :
-                      this.config.theme === 'ICE' ? 0x00e5ff : 0xff007f;
+                      this.config.theme === 'FOREST' ? 0x10b981 :
+                      this.config.theme === 'LAVA' ? 0xf59e0b :
+                      this.config.theme === 'ICE' ? 0x38bdf8 : 0x0284c7; // Monaco Racing Blue
 
     const topStripMat = new THREE.MeshBasicMaterial({ color: railColor, side: THREE.DoubleSide });
 
@@ -875,7 +878,7 @@ export class TrackManager {
     for (let p = -2; p <= 2; p++) {
       const lightPod = new THREE.Mesh(
         new THREE.SphereGeometry(0.38, 14, 14),
-        new THREE.MeshBasicMaterial({ color: 0xff0033 })
+        new THREE.MeshBasicMaterial({ color: 0xfacc15 }) // High-Visibility Racing Gold
       );
       lightPod.position.set(p * 2.2, 5.0, 0.35);
       gantry.add(lightPod);
@@ -1127,7 +1130,7 @@ export class TrackManager {
     parasolPole.position.set(4.2, 1.6, 0);
     hut.add(parasolPole);
 
-    const parasol = new THREE.Mesh(new THREE.ConeGeometry(2.2, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+    const parasol = new THREE.Mesh(new THREE.ConeGeometry(2.2, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0x0284c7 })); // Nautical Azure
     parasol.position.set(4.2, 3.2, 0);
     hut.add(parasol);
     return hut;
@@ -1140,7 +1143,7 @@ export class TrackManager {
     lh.add(tower);
 
     for (let s = 0; s < 3; s++) {
-      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(3.8 - s * 0.4, 4.3 - s * 0.4, 4, 16), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(3.8 - s * 0.4, 4.3 - s * 0.4, 4, 16), new THREE.MeshStandardMaterial({ color: 0x0284c7 })); // Royal Nautical Blue
       stripe.position.y = 10 + s * 10;
       lh.add(stripe);
     }
@@ -1192,7 +1195,7 @@ export class TrackManager {
     const frame = new THREE.Mesh(new THREE.BoxGeometry(14, 6.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x090d16, metalness: 0.9 }));
     board.add(frame);
 
-    const glowCol = type === 0 ? 0x00f0ff : type === 1 ? 0xff007f : 0xfacc15;
+    const glowCol = type === 0 ? 0x00f0ff : type === 1 ? 0x38bdf8 : 0xfacc15;
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(13.2, 5.8), new THREE.MeshBasicMaterial({ color: glowCol, transparent: true, opacity: 0.85 }));
     screen.position.z = 0.22;
     board.add(screen);
@@ -1229,7 +1232,7 @@ export class TrackManager {
     stem.position.y = stemH / 2;
     shroom.add(stem);
 
-    const capCol = seed % 2 === 0 ? 0x06b6d4 : 0xa855f7;
+    const capCol = seed % 2 === 0 ? 0x06b6d4 : 0x10b981; // Cyan & Emerald (no purple)
     const cap = new THREE.Mesh(
       new THREE.SphereGeometry(1.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: capCol, emissive: capCol, emissiveIntensity: 0.55 })
@@ -1263,7 +1266,7 @@ export class TrackManager {
 
     const lavaCore = new THREE.Mesh(
       new THREE.CircleGeometry(1.2, 12).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xff3b00 })
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b }) // Warm Golden Molten Amber (no red)
     );
     lavaCore.position.y = 0.42;
     vent.add(lavaCore);

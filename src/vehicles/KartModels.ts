@@ -18,7 +18,7 @@ export interface KartVisual {
 }
 
 export class KartModelFactory {
-  public static createKart(kartId: string, customColor = '#ff0055'): KartVisual {
+  public static createKart(kartId: string, customColor = '#00d2ff'): KartVisual {
     const root = new THREE.Group();
     const wheels: THREE.Mesh[] = [];
     const exhausts: THREE.Vector3[] = [];
@@ -35,7 +35,7 @@ export class KartModelFactory {
     });
 
     const carbonMat = new THREE.MeshStandardMaterial({
-      color: 0x11141a,
+      color: 0x0c1524,
       metalness: 0.8,
       roughness: 0.4
     });
@@ -47,7 +47,7 @@ export class KartModelFactory {
     });
 
     const tireMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1a20,
+      color: 0x090e17,
       roughness: 0.92,
       metalness: 0.1
     });
@@ -61,7 +61,7 @@ export class KartModelFactory {
     });
 
     const brakeMat = new THREE.MeshStandardMaterial({
-      color: 0xff1744,
+      color: 0xfacc15, // Championship Gold Brake Calipers
       metalness: 0.6,
       roughness: 0.3
     });
@@ -71,7 +71,7 @@ export class KartModelFactory {
     });
 
     const taillightMat = new THREE.MeshBasicMaterial({
-      color: 0xff0033
+      color: 0xf59e0b // High-visibility Amber Race Light
     });
 
     // ------------------------------------------------------------------------

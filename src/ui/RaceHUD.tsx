@@ -72,13 +72,13 @@ export const RaceHUD: React.FC = () => {
   useEffect(() => {
     if (telemetry.miniTurboNotification) {
       const text = telemetry.miniTurboNotification;
-      let color = 'from-blue-500 to-cyan-400 text-cyan-200';
+      let color = 'from-blue-500 to-cyan-400 text-cyan-100';
       if (text.includes('ULTRA')) {
-        color = 'from-amber-400 via-orange-500 to-yellow-300 text-yellow-100 shadow-[0_0_35px_#f59e0b]';
+        color = 'from-amber-400 via-yellow-300 to-amber-500 text-slate-950 shadow-[0_0_35px_#f59e0b]';
       } else if (text.includes('SUPER')) {
-        color = 'from-fuchsia-500 via-purple-600 to-pink-400 text-pink-100 shadow-[0_0_35px_#d946ef]';
+        color = 'from-sky-400 via-blue-500 to-cyan-300 text-white shadow-[0_0_35px_#0284c7]';
       } else {
-        color = 'from-cyan-400 to-blue-600 text-cyan-100 shadow-[0_0_35px_#00f0ff]';
+        color = 'from-cyan-400 to-blue-600 text-white shadow-[0_0_35px_#00f0ff]';
       }
 
       setBoostBanner({ text, color });
@@ -127,12 +127,12 @@ export const RaceHUD: React.FC = () => {
       y: wz * scale + offsetZ
     });
 
-    // Theme-based accent color
+    // Theme-based accent color (no purple, no red, no dreary gray)
     const themeGlow =
       trackConfig.theme === 'CYBER' ? '#00f0ff' :
-      trackConfig.theme === 'LAVA' ? '#ff3b30' :
+      trackConfig.theme === 'LAVA' ? '#f59e0b' :
       trackConfig.theme === 'FOREST' ? '#10b981' :
-      trackConfig.theme === 'ICE' ? '#38bdf8' : '#ff7a00';
+      trackConfig.theme === 'ICE' ? '#38bdf8' : '#0284c7';
 
     // 1. Subtle background radar scanlines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
@@ -192,18 +192,18 @@ export const RaceHUD: React.FC = () => {
       ctx.beginPath();
       ctx.arc(p0.x, p0.y, 3.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#eab308';
+      ctx.strokeStyle = '#facc15';
       ctx.lineWidth = 2;
       ctx.stroke();
     }
 
-    // 5. Opponents (AI and Remote Players)
+    // 5. Opponents (AI and Remote Players - Vibrant Racing Blue/Gold/Emerald/Cyan)
     if (telemetry.racerPositions && telemetry.racerPositions.length > 0) {
       telemetry.racerPositions.forEach((racer) => {
         if (racer.isPlayer) return; // Drawn last on top
         const pt = toCanvas(racer.x, racer.z);
 
-        ctx.fillStyle = racer.kartColor || '#ef4444';
+        ctx.fillStyle = racer.kartColor || '#0284c7';
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 3.8, 0, Math.PI * 2);
         ctx.fill();
@@ -264,7 +264,7 @@ export const RaceHUD: React.FC = () => {
       {visibleCountdown !== null && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center animate-bounce">
-            <h1 className="text-8xl md:text-9xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 via-red-500 to-purple-600 drop-shadow-[0_10px_25px_rgba(0,0,0,0.8)]">
+            <h1 className="text-8xl md:text-9xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-amber-300 via-yellow-400 to-cyan-300 drop-shadow-[0_10px_25px_rgba(0,0,0,0.8)]">
               {visibleCountdown === 0 ? 'GO!!' : visibleCountdown}
             </h1>
           </div>
@@ -273,7 +273,7 @@ export const RaceHUD: React.FC = () => {
 
       {/* 2. Wrong Way Alert */}
       {telemetry.isWrongWay && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-red-600/90 text-white font-black text-2xl md:text-3xl px-8 py-3 rounded-full border-2 border-yellow-400 shadow-[0_0_30px_#ff0033] animate-pulse">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-amber-500/95 text-slate-950 font-black text-2xl md:text-3xl px-8 py-3 rounded-full border-2 border-yellow-300 shadow-[0_0_30px_#f59e0b] animate-pulse">
           ⚠️ WRONG WAY! TURN AROUND!
         </div>
       )}
@@ -288,7 +288,7 @@ export const RaceHUD: React.FC = () => {
             ? 'bg-gradient-to-br from-slate-200 via-slate-300 to-slate-400 border-2 border-white text-slate-950 shadow-[0_0_25px_rgba(255,255,255,0.4)]'
             : telemetry.position === 3
             ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800 border-2 border-amber-400 text-white shadow-[0_0_20px_rgba(217,119,6,0.5)]'
-            : 'bg-slate-900/85 border-2 border-cyan-500/60 text-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.3)]'
+            : 'bg-blue-950/85 border-2 border-cyan-500/60 text-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.3)]'
         }`}>
           <span className="text-3xl">
             {telemetry.position === 1 ? '👑' : telemetry.position === 2 ? '🥈' : telemetry.position === 3 ? '🥉' : '🏁'}
@@ -305,8 +305,8 @@ export const RaceHUD: React.FC = () => {
         </div>
 
         {/* Lap Badge */}
-        <div className="bg-slate-900/85 backdrop-blur-md border border-purple-500/50 rounded-2xl px-5 py-3 shadow-[0_0_20px_rgba(168,85,247,0.3)]">
-          <div className="text-xs uppercase font-extrabold tracking-wider text-purple-300">LAP</div>
+        <div className="bg-blue-950/85 backdrop-blur-md border border-sky-500/50 rounded-2xl px-5 py-3 shadow-[0_0_20px_rgba(14,165,233,0.3)]">
+          <div className="text-xs uppercase font-extrabold tracking-wider text-sky-300">LAP</div>
           <div className="text-3xl font-black italic text-white">
             {telemetry.currentLap} <span className="text-slate-400 text-lg">/ {telemetry.totalLaps}</span>
           </div>
@@ -315,8 +315,8 @@ export const RaceHUD: React.FC = () => {
 
       {/* 4. Top Left (Below Badges): Live Standings Leaderboard Tower */}
       {telemetry.leaderboard && telemetry.leaderboard.length > 0 && (
-        <div className="absolute top-28 left-6 hidden sm:flex flex-col gap-1 w-52 bg-slate-950/75 backdrop-blur-md border border-slate-800/80 rounded-2xl p-2.5 shadow-xl">
-          <div className="flex justify-between items-center px-1.5 pb-1 border-b border-slate-800/60 text-[9px] font-black uppercase tracking-wider text-slate-400">
+        <div className="absolute top-28 left-6 hidden sm:flex flex-col gap-1 w-52 bg-blue-950/85 backdrop-blur-md border border-blue-900/80 rounded-2xl p-2.5 shadow-xl">
+          <div className="flex justify-between items-center px-1.5 pb-1 border-b border-blue-900/60 text-[9px] font-black uppercase tracking-wider text-sky-400">
             <span>STANDINGS</span>
             <span className="text-cyan-400 animate-pulse">● LIVE</span>
           </div>
@@ -329,12 +329,12 @@ export const RaceHUD: React.FC = () => {
                   className={`flex items-center justify-between px-2 py-1 rounded-lg text-xs transition-all ${
                     isPlayer
                       ? 'bg-gradient-to-r from-cyan-500/30 to-blue-600/30 border border-cyan-400/80 text-cyan-200 font-black shadow-[0_0_12px_rgba(0,240,255,0.35)]'
-                      : 'bg-slate-900/40 text-slate-300 font-semibold'
+                      : 'bg-blue-900/30 text-slate-200 font-semibold'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 truncate">
                     <span className={`w-4 text-[10px] font-black ${
-                      r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-slate-200' : r.rank === 3 ? 'text-amber-500' : 'text-slate-400'
+                      r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-slate-200' : r.rank === 3 ? 'text-amber-500' : 'text-sky-300'
                     }`}>
                       #{r.rank}
                     </span>
@@ -347,7 +347,7 @@ export const RaceHUD: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <span className="text-[9px] text-slate-500 font-mono">
+                  <span className="text-[9px] text-sky-400/70 font-mono">
                     L{r.lap}
                   </span>
                 </div>
@@ -359,24 +359,24 @@ export const RaceHUD: React.FC = () => {
 
       {/* 5. Top Right: Timer & Best Lap */}
       <div className="absolute top-6 right-6 flex flex-col items-end gap-2">
-        <div className="bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl px-5 py-2 text-right shadow-lg">
-          <div className="text-xs uppercase font-bold text-slate-400">RACE TIME</div>
+        <div className="bg-blue-950/85 backdrop-blur-md border border-sky-900/60 rounded-2xl px-5 py-2 text-right shadow-lg">
+          <div className="text-xs uppercase font-bold text-sky-300">RACE TIME</div>
           <div className="text-2xl font-mono font-black text-yellow-400">
             {formatTime(telemetry.raceTime)}
           </div>
         </div>
 
         {telemetry.bestLapTime > 0 && (
-          <div className="bg-slate-900/70 backdrop-blur-sm border border-slate-800 rounded-xl px-4 py-1.5 text-right">
-            <span className="text-xs font-semibold text-slate-400 mr-2">BEST:</span>
-            <span className="text-sm font-mono font-bold text-green-400">{formatTime(telemetry.bestLapTime)}</span>
+          <div className="bg-blue-950/70 backdrop-blur-sm border border-sky-900/60 rounded-xl px-4 py-1.5 text-right">
+            <span className="text-xs font-semibold text-sky-300 mr-2">BEST:</span>
+            <span className="text-sm font-mono font-bold text-emerald-400">{formatTime(telemetry.bestLapTime)}</span>
           </div>
         )}
       </div>
 
       {/* 6. Center Top: Held Item Box */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2">
-        <div className="relative w-20 h-20 bg-slate-900/90 backdrop-blur-md border-2 border-yellow-400/80 rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(250,204,21,0.4)]">
+        <div className="relative w-20 h-20 bg-blue-950/90 backdrop-blur-md border-2 border-yellow-400/80 rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(250,204,21,0.4)]">
           {currentItemDef ? (
             <div className="flex flex-col items-center animate-pulse">
               <span className="text-4xl">{currentItemDef.icon}</span>
@@ -385,7 +385,7 @@ export const RaceHUD: React.FC = () => {
               </span>
             </div>
           ) : (
-            <span className="text-3xl text-slate-600 font-bold">?</span>
+            <span className="text-3xl text-sky-700 font-bold">?</span>
           )}
         </div>
       </div>
@@ -393,7 +393,7 @@ export const RaceHUD: React.FC = () => {
       {/* 7. Bottom Right: Speedometer & Nitro Meter */}
       <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
         {/* Nitro Meter */}
-        <div className={`w-48 bg-slate-900/85 backdrop-blur-md rounded-xl p-2.5 transition-all shadow-lg ${
+        <div className={`w-48 bg-blue-950/85 backdrop-blur-md rounded-xl p-2.5 transition-all shadow-lg ${
           telemetry.isNitroActive 
             ? 'border-2 border-cyan-400 shadow-[0_0_25px_#00f0ff] animate-pulse' 
             : 'border border-cyan-500/40'
@@ -417,11 +417,7 @@ export const RaceHUD: React.FC = () => {
         </div>
 
         {/* Speed Dial with Gear Indicator [R] */}
-        <div className={`bg-slate-900/90 backdrop-blur-md rounded-3xl px-7 py-4 flex items-baseline gap-2 transition-all ${
-          telemetry.isNitroActive 
-            ? 'border-2 border-fuchsia-400 shadow-[0_0_35px_rgba(217,70,239,0.5)] scale-105' 
-            : 'border-2 border-cyan-500/60 shadow-[0_0_30px_rgba(0,240,255,0.25)]'
-        }`}>
+        <div className="bg-blue-950/90 backdrop-blur-md rounded-3xl px-7 py-4 flex items-baseline gap-2 transition-all border-2 border-cyan-500/60 shadow-[0_0_30px_rgba(0,240,255,0.25)]">
           {telemetry.isReversing && (
             <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-400 font-black text-sm tracking-widest animate-pulse mr-1">
               R
@@ -438,14 +434,14 @@ export const RaceHUD: React.FC = () => {
 
       {/* 8. Bottom Left: Full-Circuit Spline Minimap Radar */}
       <div className="absolute bottom-20 left-6">
-        <div className="w-44 h-44 rounded-3xl bg-slate-950/85 backdrop-blur-md border border-cyan-500/50 p-2 shadow-[0_0_25px_rgba(0,240,255,0.25)] flex flex-col items-center justify-between relative overflow-hidden">
+        <div className="w-44 h-44 rounded-3xl bg-blue-950/85 backdrop-blur-md border border-cyan-500/50 p-2 shadow-[0_0_25px_rgba(0,240,255,0.25)] flex flex-col items-center justify-between relative overflow-hidden">
           {/* Header */}
           <div className="w-full flex justify-between items-center px-1 text-[9px] font-black uppercase tracking-wider text-cyan-400">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
               RADAR
             </span>
-            <span className="text-slate-400 truncate max-w-[80px]">
+            <span className="text-sky-300 truncate max-w-[80px]">
               {trackConfig.name}
             </span>
           </div>
@@ -458,7 +454,7 @@ export const RaceHUD: React.FC = () => {
           />
 
           {/* Footer Coordinates / Status */}
-          <div className="w-full flex justify-between items-center px-1 text-[8px] font-mono text-slate-500">
+          <div className="w-full flex justify-between items-center px-1 text-[8px] font-mono text-sky-400/80">
             <span>MAP 2D</span>
             <span className="text-cyan-300">● LIVE POS</span>
           </div>
@@ -466,12 +462,12 @@ export const RaceHUD: React.FC = () => {
       </div>
 
       {/* 9. Bottom Left: Key Controls */}
-      <div className="absolute bottom-6 left-6 bg-slate-900/70 backdrop-blur-sm border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-400 flex gap-4">
-        <div><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white font-mono">W / ↑</kbd> Gas</div>
-        <div><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white font-mono">Shift</kbd> Drift</div>
-        <div><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white font-mono">Space</kbd> Item</div>
-        <div><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white font-mono">N</kbd> Nitro</div>
-        <div><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white font-mono">R</kbd> Reset</div>
+      <div className="absolute bottom-6 left-6 bg-blue-950/75 backdrop-blur-sm border border-sky-900/60 rounded-xl px-4 py-2 text-xs text-sky-200 flex gap-4">
+        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">W / ↑</kbd> Gas</div>
+        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">Shift</kbd> Drift</div>
+        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">Space</kbd> Item</div>
+        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">N</kbd> Nitro</div>
+        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">R</kbd> Reset</div>
       </div>
     </div>
   );

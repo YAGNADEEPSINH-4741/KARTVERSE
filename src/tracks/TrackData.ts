@@ -33,13 +33,13 @@ export const TRACKS: Record<string, TrackConfig> = {
     difficulty: 'EASY',
     laps: 3,
     roadWidth: 16.0,
-    skyColor: new THREE.Color(0xfd7e14),
-    horizonColor: new THREE.Color(0xffaa5e),
-    sunPosition: new THREE.Vector3(320, 65, -380),
-    roadColor: new THREE.Color(0x181c24), // Rich dark asphalt
-    kerbColor1: new THREE.Color(0xff1744), // Vibrant racing red
-    kerbColor2: new THREE.Color(0xf8fafc), // Crisp white
-    terrainColor: new THREE.Color(0xe0b968), // Golden sand
+    skyColor: new THREE.Color(0x0284c7),       // Crisp Azure Blue
+    horizonColor: new THREE.Color(0xbae6fd),   // Warm Golden Horizon
+    sunPosition: new THREE.Vector3(260, 140, -320), // Natural golden daylight
+    roadColor: new THREE.Color(0x0b1120),      // Deep Obsidian Asphalt
+    kerbColor1: new THREE.Color(0x0284c7),     // Monaco Racing Blue
+    kerbColor2: new THREE.Color(0xffffff),     // Crisp Alpine White
+    terrainColor: new THREE.Color(0xfde047),   // Warm Golden Beach Sand
     points: [
       new THREE.Vector3(0, 0, 0),             // 0. Finish line & Starting Gantry
       new THREE.Vector3(0, 0, 80),            // 1. Home straight
@@ -69,13 +69,13 @@ export const TRACKS: Record<string, TrackConfig> = {
     difficulty: 'MEDIUM',
     laps: 3,
     roadWidth: 17.0,
-    skyColor: new THREE.Color(0x050515),
-    horizonColor: new THREE.Color(0x1a0933),
+    skyColor: new THREE.Color(0x020617),       // Midnight Navy
+    horizonColor: new THREE.Color(0x0c274e),   // Royal Blue Skyline
     sunPosition: new THREE.Vector3(0, -50, 0), // Night
-    roadColor: new THREE.Color(0x12141a),
-    kerbColor1: new THREE.Color(0x00f0ff),
-    kerbColor2: new THREE.Color(0xff00cc),
-    terrainColor: new THREE.Color(0x0a0c10),
+    roadColor: new THREE.Color(0x08101e),      // Navy Carbon Road
+    kerbColor1: new THREE.Color(0x00f0ff),     // Electric Cyan
+    kerbColor2: new THREE.Color(0xffffff),     // Clean White
+    terrainColor: new THREE.Color(0x050b14),
     points: [
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(80, 4, 150),
@@ -100,13 +100,13 @@ export const TRACKS: Record<string, TrackConfig> = {
     difficulty: 'MEDIUM',
     laps: 3,
     roadWidth: 15.0,
-    skyColor: new THREE.Color(0x0a2618),
-    horizonColor: new THREE.Color(0x1f513b),
+    skyColor: new THREE.Color(0x064e3b),       // Lush Pine
+    horizonColor: new THREE.Color(0x34d399),   // Sunlit Meadow Green
     sunPosition: new THREE.Vector3(120, 80, 150),
-    roadColor: new THREE.Color(0x2d3a29),
-    kerbColor1: new THREE.Color(0x55ff77),
-    kerbColor2: new THREE.Color(0x114422),
-    terrainColor: new THREE.Color(0x1a331c),
+    roadColor: new THREE.Color(0x0f2417),      // Forest Earth Road
+    kerbColor1: new THREE.Color(0x10b981),     // Racing Emerald
+    kerbColor2: new THREE.Color(0xffffff),     // Crisp White
+    terrainColor: new THREE.Color(0x047857),   // Rich Moss
     points: [
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(70, 2, 130),
@@ -131,13 +131,13 @@ export const TRACKS: Record<string, TrackConfig> = {
     difficulty: 'HARD',
     laps: 3,
     roadWidth: 16.0,
-    skyColor: new THREE.Color(0x2a0804),
-    horizonColor: new THREE.Color(0x6e1b0c),
+    skyColor: new THREE.Color(0x1c1917),       // Obsidian Basalt Sky
+    horizonColor: new THREE.Color(0xb45309),   // Warm Golden Amber
     sunPosition: new THREE.Vector3(-150, 70, -200),
-    roadColor: new THREE.Color(0x241d1a),
-    kerbColor1: new THREE.Color(0xff4400),
-    kerbColor2: new THREE.Color(0xffcc00),
-    terrainColor: new THREE.Color(0x1f1412),
+    roadColor: new THREE.Color(0x0c0a09),      // Dark Obsidian Road
+    kerbColor1: new THREE.Color(0xf59e0b),     // Racing Amber / Gold
+    kerbColor2: new THREE.Color(0xffffff),     // Crisp White
+    terrainColor: new THREE.Color(0x78350f),   // Warm Copper Bedrock
     points: [
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(90, 5, 140),
@@ -162,13 +162,13 @@ export const TRACKS: Record<string, TrackConfig> = {
     difficulty: 'EXPERT',
     laps: 3,
     roadWidth: 16.5,
-    skyColor: new THREE.Color(0x6a89a7),
-    horizonColor: new THREE.Color(0xbdd5ea),
+    skyColor: new THREE.Color(0x0284c7),       // Pure Alpine Blue Sky
+    horizonColor: new THREE.Color(0xe0f2fe),   // Glacier White Horizon
     sunPosition: new THREE.Vector3(200, 90, 200),
-    roadColor: new THREE.Color(0x495867),
-    kerbColor1: new THREE.Color(0x00d2ff),
-    kerbColor2: new THREE.Color(0xffffff),
-    terrainColor: new THREE.Color(0xeaf4f4), // Snow
+    roadColor: new THREE.Color(0x0f172a),      // Glacial Track
+    kerbColor1: new THREE.Color(0x38bdf8),     // Glacial Sky Blue
+    kerbColor2: new THREE.Color(0xffffff),     // Alpine White
+    terrainColor: new THREE.Color(0xf0fdf4),   // Pristine White Snow
     points: [
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(80, 4, 130),
