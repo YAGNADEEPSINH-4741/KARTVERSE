@@ -218,91 +218,171 @@ export class TrackManager {
   }
 
   // --------------------------------------------------------------------------
-  // 2. TURQUOISE OCEAN SURFACE & WATER DEPTH
+  // 2. TURQUOISE OCEAN SURFACE WITH DYNAMIC WATER WAVES & SUNSET SPECULAR SHIMMER
   // --------------------------------------------------------------------------
+  private oceanBaseVertices: Float32Array | null = null;
+  private oceanTime = 0;
+
+  private createWaterTexture(): THREE.Texture {
+    if (typeof document === 'undefined') return new THREE.Texture();
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    // Deep turquoise base
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle gentle wave caustics
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < 45; i++) {
+      ctx.beginPath();
+      const y = Math.random() * 512;
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(
+        128, y + (Math.random() - 0.5) * 40,
+        384, y + (Math.random() - 0.5) * 40,
+        512, y
+      );
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(24, 24);
+    return tex;
+  }
+
   private buildOcean(): void {
-    const oceanGeom = new THREE.PlaneGeometry(3000, 3000, 32, 32);
+    const oceanGeom = new THREE.PlaneGeometry(3200, 3200, 72, 72);
     oceanGeom.rotateX(-Math.PI / 2);
+
+    // Save initial vertex positions for dynamic wave undulation
+    const posAttr = oceanGeom.attributes.position;
+    this.oceanBaseVertices = new Float32Array(posAttr.array);
+
     const oceanMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7, // Tropical turquoise ocean
-      roughness: 0.12,
-      metalness: 0.35,
+      color: 0x0ea5e9, // Bright tropical cyan/turquoise
+      map: this.createWaterTexture(),
+      roughness: 0.15,
+      metalness: 0.4,
       transparent: true,
-      opacity: 0.92
+      opacity: 0.94
     });
+
     this.oceanMesh = new THREE.Mesh(oceanGeom, oceanMat);
-    this.oceanMesh.position.y = -1.2;
+    this.oceanMesh.position.y = -1.1;
     this.oceanMesh.receiveShadow = true;
     this.trackGroup.add(this.oceanMesh);
 
-    // Sandy Shoreline Terrain
-    const sandGeom = new THREE.PlaneGeometry(2400, 2400, 16, 16);
+    // Sandy Shoreline Seabed
+    const sandGeom = new THREE.PlaneGeometry(2600, 2600, 20, 20);
     sandGeom.rotateX(-Math.PI / 2);
     const sandMat = new THREE.MeshStandardMaterial({
-      color: this.config.terrainColor, // Golden sand
-      roughness: 0.95
+      color: 0xf59e0b, // Warm golden sand
+      roughness: 0.95,
+      metalness: 0.05
     });
     const sand = new THREE.Mesh(sandGeom, sandMat);
-    sand.position.y = -1.45;
+    sand.position.y = -1.6;
     sand.receiveShadow = true;
     this.trackGroup.add(sand);
   }
 
   // --------------------------------------------------------------------------
-  // 3. HORIZON VOLCANIC ISLANDS & LUSH ARCHIPELAGO (Environmental Depth)
+  // 3. HORIZON VOLCANIC ISLANDS & LUSH ARCHIPELAGO (Natural Mountain Ridges)
   // --------------------------------------------------------------------------
   private buildDistantIslands(): void {
     const islandGroup = new THREE.Group();
-    const rockMat = new THREE.MeshStandardMaterial({
-      color: 0x1e1828, // Deep volcanic basalt in twilight haze
-      roughness: 0.95,
-      metalness: 0.05
+
+    // Natural mountain materials catching warm sunset illumination
+    const mountainRockMat = new THREE.MeshStandardMaterial({
+      color: 0x574838, // Warm earthy rock
+      roughness: 0.92,
+      metalness: 0.08
     });
 
-    const jungleMat = new THREE.MeshStandardMaterial({
-      color: 0x15803d, // Vibrant tropical rainforest canopy
+    const mountainJungleMat = new THREE.MeshStandardMaterial({
+      color: 0x166534, // Deep tropical rainforest canopy
+      roughness: 0.88,
+      metalness: 0.02
+    });
+
+    const coastalCliffMat = new THREE.MeshStandardMaterial({
+      color: 0x78716c, // Layered limestone/sandstone coastal cliff
       roughness: 0.85
     });
 
-    const sandMat = new THREE.MeshStandardMaterial({
-      color: 0xd97706, // Amber golden coastline
-      roughness: 0.9
+    const goldenBeachMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706, // Amber golden beach coastline
+      roughness: 0.92
     });
 
-    const numIslands = 16;
+    const numIslands = 18;
     for (let i = 0; i < numIslands; i++) {
       const angle = (i / numIslands) * Math.PI * 2;
-      const dist = 520 + Math.sin(i * 3.3) * 110;
+      const dist = 540 + Math.sin(i * 3.7) * 120;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
-      const height = 90 + (i % 5) * 25;
-      const radius = 80 + (i % 4) * 22;
+      const height = 110 + (i % 6) * 32;
+      const radius = 95 + (i % 5) * 28;
 
-      // Base volcanic island body with gentle stepped slopes (not sharp spikes)
-      const baseGeom = new THREE.CylinderGeometry(radius * 0.38, radius * 1.05, height * 0.65, 16);
-      const baseIsland = new THREE.Mesh(baseGeom, rockMat);
-      baseIsland.position.set(x, height * 0.325 - 10, z);
-      islandGroup.add(baseIsland);
+      const singleIsland = new THREE.Group();
+      singleIsland.position.set(x, 0, z);
 
-      // Rainforest Mantle on mid slopes
-      const mantleGeom = new THREE.CylinderGeometry(radius * 0.32, radius * 0.95, height * 0.45, 16);
-      const mantle = new THREE.Mesh(mantleGeom, jungleMat);
-      mantle.position.set(x, height * 0.225 - 8, z);
-      islandGroup.add(mantle);
+      // Coastal beach base
+      const beach = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 1.15, radius * 1.35, 4.0, 14),
+        goldenBeachMat
+      );
+      beach.position.y = -0.5;
+      singleIsland.add(beach);
 
-      // Rounded summit ridge
-      const summitGeom = new THREE.DodecahedronGeometry(radius * 0.35, 1);
-      const summit = new THREE.Mesh(summitGeom, rockMat);
-      summit.position.set(x, height * 0.7 - 5, z);
-      summit.scale.set(1.1, 0.75, 1.1);
-      islandGroup.add(summit);
+      // Coastal Cliff Tier
+      const cliffTier = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 0.85, radius * 1.12, height * 0.35, 14),
+        coastalCliffMat
+      );
+      cliffTier.position.y = height * 0.175;
+      cliffTier.scale.set(1.0, 1.0, 0.85 + (i % 3) * 0.15);
+      singleIsland.add(cliffTier);
 
-      // Coastal beach perimeter
-      const beachGeom = new THREE.CylinderGeometry(radius * 1.1, radius * 1.25, 4.0, 16);
-      const beach = new THREE.Mesh(beachGeom, sandMat);
-      beach.position.set(x, -1.0, z);
-      islandGroup.add(beach);
+      // Lush Jungle Mid-Slope
+      const jungleSlope = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 0.55, radius * 0.9, height * 0.45, 12),
+        mountainJungleMat
+      );
+      jungleSlope.position.y = height * 0.48;
+      jungleSlope.rotation.y = (i * 0.5);
+      singleIsland.add(jungleSlope);
+
+      // Natural Sculpted Mountain Peaks (2-3 jagged volcanic peaks per island)
+      const numPeaks = 2 + (i % 2);
+      for (let p = 0; p < numPeaks; p++) {
+        const peakH = height * (0.65 + p * 0.22);
+        const peakR = radius * (0.35 - p * 0.08);
+        const peakMesh = new THREE.Mesh(
+          new THREE.ConeGeometry(peakR, peakH, 8),
+          mountainRockMat
+        );
+        const pOffsetAngle = (p / numPeaks) * Math.PI * 2;
+        const pOffsetDist = p === 0 ? 0 : radius * 0.25;
+        peakMesh.position.set(
+          Math.cos(pOffsetAngle) * pOffsetDist,
+          height * 0.5 + peakH * 0.45,
+          Math.sin(pOffsetAngle) * pOffsetDist
+        );
+        peakMesh.rotation.y = p * 0.8;
+        peakMesh.scale.set(1.1, 1.0, 0.9);
+        singleIsland.add(peakMesh);
+      }
+
+      islandGroup.add(singleIsland);
     }
+
     this.trackGroup.add(islandGroup);
   }
 
@@ -356,9 +436,12 @@ export class TrackManager {
     const indices: number[] = [];
 
     const whiteColor = new THREE.Color(0xf8fafc);
-    const asphaltColor = new THREE.Color(0x1a1e28);   // Deep rich dark asphalt
+    const asphaltColor = new THREE.Color(0x282f3d);   // Modern high-grip charcoal racetrack asphalt
     const woodPlankColor = new THREE.Color(0x7c4a22); // Boardwalk timber planks
     const woodLineColor = new THREE.Color(0xb45309);  // Golden timber boundary
+
+    const kerbRed = new THREE.Color(0xef4444);
+    const kerbWhite = new THREE.Color(0xffffff);
 
     // 1. Generate 360 slices (0 to 359)
     for (let i = 0; i < segments; i++) {
@@ -374,7 +457,7 @@ export class TrackManager {
       const isAltKerb = Math.floor(t * 140) % 2 === 0;
       const kerbCol = isOceanBridge
         ? (isAltKerb ? woodLineColor : woodPlankColor)
-        : (isAltKerb ? this.config.kerbColor1 : this.config.kerbColor2);
+        : (isAltKerb ? kerbRed : kerbWhite);
 
       // Alternating dashed centerline
       const isCenterDash = Math.floor(t * 180) % 2 === 0;
@@ -457,8 +540,8 @@ export class TrackManager {
 
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.75,
-      metalness: 0.12,
+      roughness: 0.45,
+      metalness: 0.22,
       side: THREE.DoubleSide
     });
 
@@ -972,29 +1055,65 @@ export class TrackManager {
       const dist = this.config.roadWidth / 2 + 5.5 + Math.random() * 24.0;
       const propPos = pt.clone().addScaledVector(binormal, side * dist);
 
-      // Detailed Multi-tiered Palm Tree
-      const trunkH = 8.5 + Math.random() * 4.0;
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.3, 0.6, trunkH, 8),
-        new THREE.MeshStandardMaterial({ color: 0x784f2d, roughness: 0.85 })
-      );
-      trunk.position.copy(propPos).add(new THREE.Vector3(0, trunkH / 2, 0));
-      trunk.rotation.z = (Math.random() - 0.5) * 0.18;
-      trunk.castShadow = true;
-      this.trackGroup.add(trunk);
+      // High-Fidelity Curving Tropical Palm Tree
+      const palmGroup = new THREE.Group();
+      palmGroup.position.copy(propPos);
+      const curveDir = (Math.random() - 0.5) * 0.35;
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x784f2d, roughness: 0.85 });
 
-      // 8 Drooping Arched Palm Leaves
-      const leafCrownPos = propPos.clone().add(new THREE.Vector3(0, trunkH, 0));
-      for (let leaf = 0; leaf < 8; leaf++) {
-        const leafGeom = new THREE.ConeGeometry(1.6, 5.8, 5);
-        leafGeom.rotateX(Math.PI / 2.8);
-        const leafMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.65 });
-        const frond = new THREE.Mesh(leafGeom, leafMat);
-        frond.position.copy(leafCrownPos);
-        frond.rotation.y = (leaf / 8) * Math.PI * 2;
-        frond.castShadow = true;
-        this.trackGroup.add(frond);
+      // Multi-segment curved trunk (3 curved nodes)
+      const segH = 3.6;
+      for (let s = 0; s < 3; s++) {
+        const seg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.32 - s * 0.06, 0.45 - s * 0.06, segH, 8),
+          trunkMat
+        );
+        seg.position.set(s * curveDir * 1.5, segH * (s + 0.5), 0);
+        seg.rotation.z = s * curveDir * 0.3;
+        seg.castShadow = true;
+        palmGroup.add(seg);
       }
+
+      const totalH = segH * 3;
+      const crownTop = new THREE.Vector3(2 * curveDir * 1.5, totalH, 0);
+
+      // Coconuts cluster under crown
+      const coconutMat = new THREE.MeshStandardMaterial({ color: 0x45220a, roughness: 0.8 });
+      for (let c = 0; c < 4; c++) {
+        const nut = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 8), coconutMat);
+        const cAngle = (c / 4) * Math.PI * 2;
+        nut.position.set(
+          crownTop.x + Math.cos(cAngle) * 0.45,
+          crownTop.y - 0.25,
+          crownTop.z + Math.sin(cAngle) * 0.45
+        );
+        palmGroup.add(nut);
+      }
+
+      // 10 Arched Drooping Palm Fronds with Tropical Emerald Foliage
+      const frondMat = new THREE.MeshStandardMaterial({
+        color: 0x16a34a,
+        roughness: 0.55,
+        side: THREE.DoubleSide
+      });
+      for (let leaf = 0; leaf < 10; leaf++) {
+        const leafAngle = (leaf / 10) * Math.PI * 2;
+        const leafGroup = new THREE.Group();
+        leafGroup.position.copy(crownTop);
+        leafGroup.rotation.y = leafAngle;
+
+        // Arched leaf ribbon
+        const frondGeom = new THREE.BoxGeometry(1.6, 0.06, 6.2);
+        const frond = new THREE.Mesh(frondGeom, frondMat);
+        frond.position.set(0, -0.6, 2.8);
+        frond.rotation.x = -0.38; // Droop down
+        frond.castShadow = true;
+        leafGroup.add(frond);
+
+        palmGroup.add(leafGroup);
+      }
+
+      this.trackGroup.add(palmGroup);
 
       // Beach Thatched Huts & Parasols (Every ~7 palms)
       if (i % 7 === 0) {
@@ -1029,12 +1148,30 @@ export class TrackManager {
   // 11. ANIMATION LOOP (Lighthouse Beacon, Clouds, Ocean Waves & Coins)
   // --------------------------------------------------------------------------
   public update(delta: number, playerPos: THREE.Vector3): void {
-    // 1. Rotate Lighthouse Beacon Beam
+    // 1. Dynamic Ocean Waves Undulation
+    this.oceanTime += delta * 1.5;
+    if (this.oceanMesh && this.oceanBaseVertices) {
+      const posAttr = this.oceanMesh.geometry.attributes.position;
+      const arr = posAttr.array as Float32Array;
+      const base = this.oceanBaseVertices;
+      const count = posAttr.count;
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        const x = base[idx];
+        const z = base[idx + 2];
+        arr[idx + 1] = base[idx + 1] + 
+          Math.sin(x * 0.018 + this.oceanTime) * 0.45 + 
+          Math.cos(z * 0.015 + this.oceanTime * 0.8) * 0.35;
+      }
+      posAttr.needsUpdate = true;
+    }
+
+    // 2. Rotate Lighthouse Beacon Beam
     if (this.lighthouseBeacon) {
       this.lighthouseBeacon.rotation.z += delta * 1.2;
     }
 
-    // 2. Drift Sunset Clouds slowly across the sky
+    // 3. Drift Sunset Clouds slowly across the sky
     this.clouds.forEach(c => {
       c.position.x += delta * 3.5;
       if (c.position.x > 650) {
@@ -1042,7 +1179,7 @@ export class TrackManager {
       }
     });
 
-    // 3. Rotate Collectible Golden Coins & Check Player Collection
+    // 4. Rotate Collectible Golden Coins & Check Player Collection
     this.coins.forEach(coin => {
       if (!coin.collected) {
         coin.mesh.rotation.y += delta * 4.0;

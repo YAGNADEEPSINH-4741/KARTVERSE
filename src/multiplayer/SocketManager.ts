@@ -52,11 +52,6 @@ export class SocketManager {
       console.log('Disconnected from Multiplayer Server');
     });
 
-+
-        }
-      }
-    });
-
     this.socket.on('countdown_tick', (countdown: number) => {
       if (this.onCountdownStart) this.onCountdownStart(countdown);
       useGameStore.getState().setTelemetry({ countdownNumber: countdown });
