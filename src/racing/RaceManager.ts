@@ -72,10 +72,13 @@ export class RaceManager {
       };
     }
 
-    // Clear countdown UI when racing starts
-    if (this.countdownValue !== null && this.countdownTimer < -1.0) {
-      this.countdownValue = null;
-      useGameStore.getState().setTelemetry({ countdownNumber: null });
+    // Clear countdown UI after "GO!" displays for 1.2 seconds into the race
+    if (this.countdownValue !== null) {
+      this.countdownTimer -= delta;
+      if (this.countdownTimer < -1.2) {
+        this.countdownValue = null;
+        useGameStore.getState().setTelemetry({ countdownNumber: null });
+      }
     }
 
     const currentTime = performance.now() / 1000;

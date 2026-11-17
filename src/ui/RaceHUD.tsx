@@ -14,6 +14,23 @@ export const RaceHUD: React.FC = () => {
   // Active mini-turbo popup banner state
   const [boostBanner, setBoostBanner] = useState<{ text: string; color: string } | null>(null);
 
+  // Self-dismissing countdown display to ensure "GO!" never persists
+  const [visibleCountdown, setVisibleCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (telemetry.countdownNumber !== null) {
+      setVisibleCountdown(telemetry.countdownNumber);
+      if (telemetry.countdownNumber === 0) {
+        const timer = setTimeout(() => {
+          setVisibleCountdown(null);
+        }, 1200);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      setVisibleCountdown(null);
+    }
+  }, [telemetry.countdownNumber]);
+
   useEffect(() => {
     if (telemetry.miniTurboNotification) {
       const text = telemetry.miniTurboNotification;
@@ -115,12 +132,12 @@ export const RaceHUD: React.FC = () => {
         </div>
       )}
 
-      {/* 1. Countdown Banner */}
-      {telemetry.countdownNumber !== null && (
+      {/* 1. Countdown Banner (Auto-dismisses after GO!) */}
+      {visibleCountdown !== null && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center animate-bounce">
             <h1 className="text-8xl md:text-9xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 via-red-500 to-purple-600 drop-shadow-[0_10px_25px_rgba(0,0,0,0.8)]">
-              {telemetry.countdownNumber === 0 ? 'GO!!' : telemetry.countdownNumber}
+              {visibleCountdown === 0 ? 'GO!!' : visibleCountdown}
             </h1>
           </div>
         </div>
