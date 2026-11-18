@@ -52,15 +52,16 @@ export const MultiplayerLobby: React.FC = () => {
   };
 
   const handleJoinRoom = async () => {
-    if (!inputCode.trim()) {
-      setErrorMsg('Please enter a 6-character room code');
+    const cleanCode = inputCode.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (!cleanCode) {
+      setErrorMsg('Please enter a room code (e.g. KV8F2A)');
       return;
     }
     try {
       setLoading(true);
       setErrorMsg(null);
       audio.playMenuClick();
-      await socketManager.joinRoom(inputCode.trim().toUpperCase(), profile.username, selectedKart, kartColor);
+      await socketManager.joinRoom(cleanCode, profile.username, selectedKart, kartColor);
       setRaceMode('MULTIPLAYER');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to join room');
@@ -87,7 +88,10 @@ export const MultiplayerLobby: React.FC = () => {
     audio.playMenuClick();
     socketManager.startRace();
     setRaceMode('MULTIPLAYER');
-    setScreen('QUICK_RACE');
+    // Allow brief dispatch window for broadcast packets before local screen transition
+    setTimeout(() => {
+      setScreen('QUICK_RACE');
+    }, 80);
   };
 
   const handleLeaveRoom = () => {
@@ -174,10 +178,10 @@ export const MultiplayerLobby: React.FC = () => {
                 <div className="mt-6">
                   <input
                     type="text"
-                    maxLength={6}
+                    maxLength={8}
                     value={inputCode}
-                    onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-                    placeholder="ENTER 6-CHAR CODE"
+                    onChange={(e) => setInputCode(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase())}
+                    placeholder="ENTER CODE (E.G. KV9A1B)"
                     className="w-full bg-blue-950 border-2 border-cyan-500/50 focus:border-cyan-400 rounded-xl px-5 py-4 text-center font-mono text-2xl font-black tracking-widest text-cyan-300 placeholder:text-sky-700 focus:outline-none"
                   />
                 </div>

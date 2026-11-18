@@ -150,11 +150,12 @@ export class SocketManager {
         const items = state[key] as any[];
         if (items && items.length > 0) {
           const p = items[items.length - 1]; // Latest presence packet
-          if (!seen.has(p.id)) {
-            seen.add(p.id);
+          const pId = p.id || key;
+          if (!seen.has(pId)) {
+            seen.add(pId);
             playerList.push({
-              id: p.id,
-              userId: p.userId || p.id,
+              id: pId,
+              userId: p.userId || pId,
               username: p.username || 'Racer',
               avatar: p.avatar || 'kart_racer_1',
               kartId: p.kartId || 'velocity_gt',
@@ -191,6 +192,53 @@ export class SocketManager {
       useGameStore.getState().setRoomPlayers(playerList);
     });
 
+    // 1b. Direct Peer Join Handshake: Instant, zero-lag roster registration
+    this.supabaseChannel.on('broadcast', { event: 'player_join' }, ({ payload }) => {
+      if (payload?.player && payload.player.id !== this.localPlayerId) {
+        console.log('[MULTIPLAYER] Instant peer joined:', payload.player.username, payload.player.id);
+        const store = useGameStore.getState();
+        const current = store.roomPlayers;
+        if (!current.some(p => p.id === payload.player.id)) {
+          const updated = [...current, payload.player].sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0));
+          store.setRoomPlayers(updated);
+        }
+
+        // If I am Host, immediately respond with authoritative room state
+        if (store.isHost && this.supabaseChannel) {
+          this.supabaseChannel.send({
+            type: 'broadcast',
+            event: 'room_state',
+            payload: {
+              players: useGameStore.getState().roomPlayers,
+              selectedTrack: store.selectedTrack
+            }
+          }).catch(() => {});
+        }
+      }
+    });
+
+    // 1c. Authoritative Room State Sync from Host
+    this.supabaseChannel.on('broadcast', { event: 'room_state' }, ({ payload }) => {
+      if (payload?.players && Array.isArray(payload.players)) {
+        console.log('[MULTIPLAYER] Received room_state sync:', payload.players.length, 'players');
+        const store = useGameStore.getState();
+        const map = new Map<string, MultiplayerPlayer>();
+        for (const p of payload.players) {
+          map.set(p.id, p);
+        }
+        // Ensure local player stays intact
+        const local = store.roomPlayers.find(p => p.id === this.localPlayerId) || localPlayer;
+        map.set(local.id, local);
+
+        const list = Array.from(map.values()).sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0));
+        store.setRoomPlayers(list);
+
+        if (payload.selectedTrack && !store.isHost) {
+          store.setSelectedTrack(payload.selectedTrack);
+        }
+      }
+    });
+
     // 2. Real-Time Track Selection Broadcast (Host -> All Players)
     this.supabaseChannel.on('broadcast', { event: 'track_selected' }, ({ payload }) => {
       if (payload && payload.trackId) {
@@ -209,6 +257,7 @@ export class SocketManager {
 
     // 4. Synchronized Race Launch (Host -> All Players)
     this.supabaseChannel.on('broadcast', { event: 'start_race' }, ({ payload }) => {
+      console.log('[MULTIPLAYER] Received start_race event from host:', payload);
       if (payload?.trackId) {
         useGameStore.getState().setSelectedTrack(payload.trackId);
       }
@@ -222,6 +271,14 @@ export class SocketManager {
       if (payload && payload.id !== this.localPlayerId) {
         // Record heartbeat timestamp from active telemetry
         this.lastHeartbeatMap.set(payload.id, Date.now());
+
+        // Failsafe: If guest is still sitting in the lobby and telemetry starts flowing, launch race!
+        if (useGameStore.getState().currentScreen === 'MULTIPLAYER_LOBBY') {
+          console.log('[MULTIPLAYER] Telemetry detected while in lobby! Auto-starting race...');
+          useGameStore.getState().setRaceMode('MULTIPLAYER');
+          useGameStore.getState().setScreen('QUICK_RACE');
+          if (this.onRaceStart) this.onRaceStart();
+        }
 
         if (this.onRemoteTelemetry) {
           this.onRemoteTelemetry({
@@ -271,9 +328,27 @@ export class SocketManager {
     // Subscribe and track local presence with auto-reconnect
     this.supabaseChannel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED' && this.supabaseChannel) {
-        await this.supabaseChannel.track(localPlayer);
+        try {
+          await this.supabaseChannel.track(localPlayer);
+        } catch (e) {
+          console.warn('[MULTIPLAYER] Track error:', e);
+        }
         // Start continuous heartbeat & health monitoring
         this.startHeartbeat(localPlayer);
+
+        // Announce join via broadcast (3 bursts for 100% arrival)
+        if (!localPlayer.isHost) {
+          const sendJoin = () => {
+            this.supabaseChannel?.send({
+              type: 'broadcast',
+              event: 'player_join',
+              payload: { player: localPlayer }
+            }).catch(() => {});
+          };
+          sendJoin();
+          setTimeout(sendJoin, 400);
+          setTimeout(sendJoin, 1000);
+        }
       } else if (['CLOSED', 'TIMED_OUT', 'CHANNEL_ERROR'].includes(status)) {
         console.warn(`[MULTIPLAYER] Channel disconnected (${status}). Auto-reconnecting in 2s...`);
         if (this.currentRoomCode && !this.isReconnecting) {
@@ -322,8 +397,6 @@ export class SocketManager {
 
   private sendHeartbeat(localPlayer: MultiplayerPlayer): void {
     if (!this.supabaseChannel) return;
-    // Refresh channel presence so Supabase Realtime never times out the client
-    this.supabaseChannel.track(localPlayer).catch(() => {});
     // Broadcast ping to all connected peers
     this.supabaseChannel.send({
       type: 'broadcast',
@@ -405,11 +478,17 @@ export class SocketManager {
   public startRace(): void {
     const trackId = useGameStore.getState().selectedTrack;
     if (this.supabaseChannel) {
-      this.supabaseChannel.send({
-        type: 'broadcast',
-        event: 'start_race',
-        payload: { trackId }
-      });
+      const sendPacket = () => {
+        this.supabaseChannel?.send({
+          type: 'broadcast',
+          event: 'start_race',
+          payload: { trackId, timestamp: Date.now() }
+        }).catch(() => {});
+      };
+      // Send 3 bursts to ensure 100% arrival over mobile / WiFi
+      sendPacket();
+      setTimeout(sendPacket, 120);
+      setTimeout(sendPacket, 250);
     }
   }
 
@@ -508,7 +587,11 @@ export class SocketManager {
     this.supabaseChannel = null;
     this.currentRoomCode = null;
     if (ch) {
-      ch.unsubscribe();
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        ch.unsubscribe();
+      }
     }
     if (this.socket) {
       this.socket.disconnect();
