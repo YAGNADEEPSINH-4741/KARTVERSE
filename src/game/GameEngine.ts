@@ -18,6 +18,7 @@ import { useGameStore } from '../store/gameStore';
 import { socketManager } from '../multiplayer/SocketManager';
 import { NetworkSync } from '../multiplayer/NetworkSync';
 import { PowerUpType } from '../items/PowerUpSystem';
+import { touchControls } from '../input/TouchControls';
 
 export class GameEngine {
   public container: HTMLElement;
@@ -301,7 +302,7 @@ export class GameEngine {
 
     // 3. Setup Lap & Position Managers
     this.lapManager = new LapManager(this.trackManager.checkpoints, this.trackManager.config.laps);
-    this.positionManager = new PositionManager(this.lapManager, this.trackManager.checkpoints);
+    this.positionManager = new PositionManager(this.lapManager, this.trackManager.checkpoints, this.trackManager.curve);
     this.raceManager = new RaceManager(this.lapManager, this.positionManager);
 
     // 4. Starting Grid Setup
@@ -554,42 +555,73 @@ export class GameEngine {
   private updateRace(delta: number): void {
     const store = useGameStore.getState();
 
-    // 1. Read Inputs
-    const throttle = (this.keys['ArrowUp'] || this.keys['KeyW']) ? 1.0 : (this.keys['ArrowDown'] || this.keys['KeyS']) ? -0.8 : 0.0;
-    const steer = (this.keys['ArrowRight'] || this.keys['KeyD']) ? 1.0 : (this.keys['ArrowLeft'] || this.keys['KeyA']) ? -1.0 : 0.0;
-    const wantsDrift = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
-    const wantsNitro = !!(this.keys['KeyN'] || this.keys['KeyF']);
+    // 1. Read Inputs (Keyboard & On-Screen Mobile/Tablet Touch Controls)
+    const steerLeft = this.keys['ArrowLeft'] || this.keys['KeyA'] || touchControls.steerLeft;
+    const steerRight = this.keys['ArrowRight'] || this.keys['KeyD'] || touchControls.steerRight;
+    const steer = (steerRight ? 1.0 : 0.0) - (steerLeft ? 1.0 : 0.0);
+
+    const wantsAccel = this.keys['ArrowUp'] || this.keys['KeyW'] || touchControls.accelerate;
+    const wantsBrake = touchControls.brake;
+    const wantsReverse = this.keys['ArrowDown'] || this.keys['KeyS'] || touchControls.reverse;
+
+    let throttle = 0.0;
+    if (wantsAccel) {
+      throttle = 1.0;
+    } else if (wantsReverse) {
+      throttle = -0.8;
+    } else if (wantsBrake) {
+      throttle = -0.6;
+    }
+
+    const wantsDrift = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight'] || touchControls.drift);
+    const wantsNitro = !!(this.keys['KeyN'] || this.keys['KeyF'] || touchControls.nitro);
+
+    if (touchControls.useItem) {
+      touchControls.useItem = false;
+      this.useHeldPowerUp();
+    }
 
     // 2. Road Surface Elevation Clamping (Prevents ground clipping & screen slicing)
     const roadY = this.trackManager.getRoadHeightAt(this.localKartPhysics.position);
     this.localKartPhysics.roadElevation = roadY;
 
-    // 3. Gather All Racer Positions
-    const racerPositions: { id: string; position: THREE.Vector3 }[] = [
-      { id: 'local_player', position: this.localKartPhysics.position }
-    ];
-
-    for (const ai of this.aiRacers) {
-      ai.physics.roadElevation = this.trackManager.getRoadHeightAt(ai.physics.position);
-      racerPositions.push({ id: ai.profile.id, position: ai.physics.position });
-    }
-
-    for (const [id, remote] of this.networkSync.remotePlayers.entries()) {
-      racerPositions.push({ id, position: remote.currentPosition });
-    }
-
-    // 4. Update Race Coordinator
+    // 3. Gather All Racer Positions & Forward Headings
     const forward = new THREE.Vector3(
       Math.sin(this.localKartPhysics.rotationY),
       0,
       Math.cos(this.localKartPhysics.rotationY)
     );
 
+    const racerPositions: { id: string; position: THREE.Vector3; forward: THREE.Vector3 }[] = [
+      { id: 'local_player', position: this.localKartPhysics.position, forward }
+    ];
+
+    for (const ai of this.aiRacers) {
+      ai.physics.roadElevation = this.trackManager.getRoadHeightAt(ai.physics.position);
+      const aiFwd = new THREE.Vector3(
+        Math.sin(ai.physics.rotationY),
+        0,
+        Math.cos(ai.physics.rotationY)
+      );
+      racerPositions.push({ id: ai.profile.id, position: ai.physics.position, forward: aiFwd });
+    }
+
+    for (const [id, remote] of this.networkSync.remotePlayers.entries()) {
+      const remoteFwd = new THREE.Vector3(
+        Math.sin(remote.currentRotationY || 0),
+        0,
+        Math.cos(remote.currentRotationY || 0)
+      );
+      racerPositions.push({ id, position: remote.currentPosition, forward: remoteFwd });
+    }
+
+    // 4. Update Race Coordinator
     const raceControl = this.raceManager.update(delta, racerPositions, 'local_player', forward);
 
     // 5. Local Kart Physics Update & Track Boundary Enforcement
     const activeThrottle = raceControl.canDrive ? throttle : 0;
-    this.localKartPhysics.update(delta, activeThrottle, steer, wantsDrift, wantsNitro, this.localKartVisual);
+    const isBrakeOnly = wantsBrake && !wantsReverse;
+    this.localKartPhysics.update(delta, activeThrottle, steer, wantsDrift, wantsNitro, this.localKartVisual, isBrakeOnly);
 
     // Car must stay strictly inside the track boundaries at all times
     const constraint = this.trackManager.getTrackConstraint(this.localKartPhysics.position);
@@ -628,7 +660,7 @@ export class GameEngine {
       this.networkSync.update(delta);
 
       this.telemetrySendTimer += delta;
-      if (this.telemetrySendTimer >= 0.05) {
+      if (this.telemetrySendTimer >= 0.033) {
         this.telemetrySendTimer = 0;
         socketManager.sendTelemetry({
           position: {

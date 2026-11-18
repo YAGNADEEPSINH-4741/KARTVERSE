@@ -9,6 +9,8 @@ import * as THREE from 'three';
 import { useGameStore } from '../store/gameStore';
 import { POWER_UPS, PowerUpType } from '../items/PowerUpSystem';
 import { TRACKS } from '../tracks/TrackData';
+import { isMobileOrTablet, requestLandscapeOrientation } from '../utils/deviceDetection';
+import { touchControls } from '../input/TouchControls';
 
 export const RaceHUD: React.FC = () => {
   const telemetry = useGameStore(state => state.telemetry);
@@ -20,6 +22,34 @@ export const RaceHUD: React.FC = () => {
 
   // Self-dismissing countdown display to ensure "GO!" never persists
   const [visibleCountdown, setVisibleCountdown] = useState<number | null>(null);
+
+  // Mobile / Tablet touch detection & screen auto-rotation
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(false);
+
+  useEffect(() => {
+    const checkDevice = () => {
+      const mobile = isMobileOrTablet();
+      setIsTouchDevice(mobile);
+
+      const portrait = window.innerHeight > window.innerWidth;
+      setIsPortrait(portrait);
+
+      // Attempt orientation lock to landscape if on mobile/tablet
+      if (mobile && portrait) {
+        requestLandscapeOrientation().catch(() => {});
+      }
+    };
+
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    window.addEventListener('orientationchange', checkDevice);
+
+    return () => {
+      window.removeEventListener('resize', checkDevice);
+      window.removeEventListener('orientationchange', checkDevice);
+    };
+  }, []);
 
   // Track geometry and bounding box computation for 2D minimap
   const trackConfig = TRACKS[selectedTrack] || TRACKS.sunset_coast;
@@ -313,8 +343,8 @@ export const RaceHUD: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Top Left (Below Badges): Live Standings Leaderboard Tower */}
-      {telemetry.leaderboard && telemetry.leaderboard.length > 0 && (
+      {/* 4. Top Left (Below Badges): Live Standings Leaderboard Tower (Desktop only) */}
+      {telemetry.leaderboard && telemetry.leaderboard.length > 0 && !isTouchDevice && (
         <div className="absolute top-28 left-6 hidden sm:flex flex-col gap-1 w-52 bg-blue-950/85 backdrop-blur-md border border-blue-900/80 rounded-2xl p-2.5 shadow-xl">
           <div className="flex justify-between items-center px-1.5 pb-1 border-b border-blue-900/60 text-[9px] font-black uppercase tracking-wider text-sky-400">
             <span>STANDINGS</span>
@@ -390,10 +420,14 @@ export const RaceHUD: React.FC = () => {
         </div>
       </div>
 
-      {/* 7. Bottom Right: Speedometer & Nitro Meter */}
-      <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
+      {/* 7. Speedometer & Nitro Meter (Bottom-center on touch/mobile, bottom-right on desktop) */}
+      <div className={`absolute ${
+        isTouchDevice 
+          ? 'bottom-4 left-1/2 -translate-x-1/2 flex-col items-center scale-75 sm:scale-90 origin-bottom' 
+          : 'bottom-6 right-6 flex-col items-end'
+      } flex gap-2.5 z-20`}>
         {/* Nitro Meter */}
-        <div className={`w-48 bg-blue-950/85 backdrop-blur-md rounded-xl p-2.5 transition-all shadow-lg ${
+        <div className={`w-44 sm:w-48 bg-blue-950/85 backdrop-blur-md rounded-xl p-2 sm:p-2.5 transition-all shadow-lg ${
           telemetry.isNitroActive 
             ? 'border-2 border-cyan-400 shadow-[0_0_25px_#00f0ff] animate-pulse' 
             : 'border border-cyan-500/40'
@@ -404,7 +438,7 @@ export const RaceHUD: React.FC = () => {
             </span>
             <span className="text-xs font-mono font-bold text-cyan-400">{telemetry.nitroPercent}%</span>
           </div>
-          <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
+          <div className="w-full bg-slate-800 h-2.5 sm:h-3 rounded-full overflow-hidden p-0.5">
             <div
               className={`h-full rounded-full transition-all duration-100 ${
                 telemetry.isNitroActive 
@@ -417,23 +451,23 @@ export const RaceHUD: React.FC = () => {
         </div>
 
         {/* Speed Dial with Gear Indicator [R] */}
-        <div className="bg-blue-950/90 backdrop-blur-md rounded-3xl px-7 py-4 flex items-baseline gap-2 transition-all border-2 border-cyan-500/60 shadow-[0_0_30px_rgba(0,240,255,0.25)]">
+        <div className="bg-blue-950/90 backdrop-blur-md rounded-3xl px-5 sm:px-7 py-3 sm:py-4 flex items-baseline gap-2 transition-all border-2 border-cyan-500/60 shadow-[0_0_30px_rgba(0,240,255,0.25)]">
           {telemetry.isReversing && (
             <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-400 font-black text-sm tracking-widest animate-pulse mr-1">
               R
             </span>
           )}
-          <span className="text-6xl font-black italic tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.7)]">
+          <span className="text-5xl sm:text-6xl font-black italic tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.7)]">
             {telemetry.speedKmh}
           </span>
-          <span className="text-lg font-black uppercase italic text-cyan-400 tracking-wider">
+          <span className="text-base sm:text-lg font-black uppercase italic text-cyan-400 tracking-wider">
             KM/H
           </span>
         </div>
       </div>
 
-      {/* 8. Bottom Left: Full-Circuit Spline Minimap Radar */}
-      <div className="absolute bottom-20 left-6">
+      {/* 8. Minimap Radar (Responsive Position: top-24 left-6 on mobile/touch, bottom-20 left-6 on desktop) */}
+      <div className={`absolute ${isTouchDevice ? 'top-24 left-6 scale-75 origin-top-left' : 'bottom-20 left-6'}`}>
         <div className="w-44 h-44 rounded-3xl bg-blue-950/85 backdrop-blur-md border border-cyan-500/50 p-2 shadow-[0_0_25px_rgba(0,240,255,0.25)] flex flex-col items-center justify-between relative overflow-hidden">
           {/* Header */}
           <div className="w-full flex justify-between items-center px-1 text-[9px] font-black uppercase tracking-wider text-cyan-400">
@@ -461,14 +495,155 @@ export const RaceHUD: React.FC = () => {
         </div>
       </div>
 
-      {/* 9. Bottom Left: Key Controls */}
-      <div className="absolute bottom-6 left-6 bg-blue-950/75 backdrop-blur-sm border border-sky-900/60 rounded-xl px-4 py-2 text-xs text-sky-200 flex gap-4">
-        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">W / ↑</kbd> Gas</div>
-        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">Shift</kbd> Drift</div>
-        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">Space</kbd> Item</div>
-        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">N</kbd> Nitro</div>
-        <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">R</kbd> Reset</div>
-      </div>
+      {/* 9. Bottom Left: Desktop Keyboard Controls Tips */}
+      {!isTouchDevice && (
+        <div className="absolute bottom-6 left-6 bg-blue-950/75 backdrop-blur-sm border border-sky-900/60 rounded-xl px-4 py-2 text-xs text-sky-200 flex gap-4">
+          <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">W / ↑</kbd> Gas</div>
+          <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">Shift</kbd> Drift</div>
+          <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">Space</kbd> Item</div>
+          <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">N</kbd> Nitro</div>
+          <div><kbd className="bg-blue-900 px-1.5 py-0.5 rounded text-white font-mono">R</kbd> Reset</div>
+        </div>
+      )}
+
+      {/* 10. Mobile & Tablet Touch Controls */}
+      {isTouchDevice && (
+        <div className="absolute inset-0 pointer-events-none z-30 select-none">
+          {/* Left Thumb Zone: Steer Left & Steer Right */}
+          <div className="absolute bottom-6 left-6 flex items-center gap-3 pointer-events-auto">
+            {/* Steer Left */}
+            <button
+              onTouchStart={(e) => { e.preventDefault(); touchControls.steerLeft = true; }}
+              onTouchEnd={(e) => { e.preventDefault(); touchControls.steerLeft = false; }}
+              onTouchCancel={() => { touchControls.steerLeft = false; }}
+              onMouseDown={() => { touchControls.steerLeft = true; }}
+              onMouseUp={() => { touchControls.steerLeft = false; }}
+              className="w-18 h-18 sm:w-22 sm:h-22 rounded-3xl bg-blue-950/85 active:bg-cyan-500/40 backdrop-blur-md border-2 border-cyan-400/80 active:border-cyan-300 flex flex-col items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.3)] active:scale-90 transition-transform cursor-pointer"
+              aria-label="Steer Left"
+            >
+              <span className="text-3xl text-cyan-300 font-black">◀</span>
+              <span className="text-[10px] font-black uppercase text-cyan-200 tracking-wider">LEFT</span>
+            </button>
+
+            {/* Steer Right */}
+            <button
+              onTouchStart={(e) => { e.preventDefault(); touchControls.steerRight = true; }}
+              onTouchEnd={(e) => { e.preventDefault(); touchControls.steerRight = false; }}
+              onTouchCancel={() => { touchControls.steerRight = false; }}
+              onMouseDown={() => { touchControls.steerRight = true; }}
+              onMouseUp={() => { touchControls.steerRight = false; }}
+              className="w-18 h-18 sm:w-22 sm:h-22 rounded-3xl bg-blue-950/85 active:bg-cyan-500/40 backdrop-blur-md border-2 border-cyan-400/80 active:border-cyan-300 flex flex-col items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.3)] active:scale-90 transition-transform cursor-pointer"
+              aria-label="Steer Right"
+            >
+              <span className="text-3xl text-cyan-300 font-black">▶</span>
+              <span className="text-[10px] font-black uppercase text-cyan-200 tracking-wider">RIGHT</span>
+            </button>
+          </div>
+
+          {/* Right Thumb Zone: Nitro, Brake, Reverse, Item & Speed (Gas) */}
+          <div className="absolute bottom-6 right-6 flex items-end gap-2.5 pointer-events-auto">
+            {/* Secondary Column: Nitro, Brake, Reverse */}
+            <div className="flex flex-col gap-2 items-end">
+              {/* Nitro Boost Button */}
+              <button
+                onTouchStart={(e) => { e.preventDefault(); touchControls.nitro = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); touchControls.nitro = false; }}
+                onTouchCancel={() => { touchControls.nitro = false; }}
+                onMouseDown={() => { touchControls.nitro = true; }}
+                onMouseUp={() => { touchControls.nitro = false; }}
+                className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-amber-500/90 via-yellow-400/90 to-amber-600/90 active:from-yellow-300 active:to-amber-500 backdrop-blur-md border-2 border-yellow-300 text-slate-950 flex flex-col items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.6)] active:scale-90 transition-transform cursor-pointer"
+                aria-label="Nitro Boost"
+              >
+                <span className="text-2xl">⚡</span>
+                <span className="text-[9px] font-black uppercase tracking-tighter">NITRO</span>
+              </button>
+
+              {/* Brake Button */}
+              <button
+                onTouchStart={(e) => { e.preventDefault(); touchControls.brake = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); touchControls.brake = false; }}
+                onTouchCancel={() => { touchControls.brake = false; }}
+                onMouseDown={() => { touchControls.brake = true; }}
+                onMouseUp={() => { touchControls.brake = false; }}
+                className="w-16 h-14 sm:w-18 sm:h-15 rounded-2xl bg-blue-950/90 active:bg-amber-600/50 backdrop-blur-md border-2 border-amber-400/80 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.3)] active:scale-90 transition-transform cursor-pointer"
+                aria-label="Brake"
+              >
+                <span className="text-lg text-amber-300 font-black">🛑</span>
+                <span className="text-[9px] font-black uppercase text-amber-200 tracking-wider">BRAKE</span>
+              </button>
+
+              {/* Reverse Button */}
+              <button
+                onTouchStart={(e) => { e.preventDefault(); touchControls.reverse = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); touchControls.reverse = false; }}
+                onTouchCancel={() => { touchControls.reverse = false; }}
+                onMouseDown={() => { touchControls.reverse = true; }}
+                onMouseUp={() => { touchControls.reverse = false; }}
+                className="w-16 h-14 sm:w-18 sm:h-15 rounded-2xl bg-blue-950/90 active:bg-sky-600/50 backdrop-blur-md border-2 border-sky-400/80 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(56,189,248,0.3)] active:scale-90 transition-transform cursor-pointer"
+                aria-label="Reverse"
+              >
+                <span className="text-lg text-sky-300 font-black">⬇️</span>
+                <span className="text-[9px] font-black uppercase text-sky-200 tracking-wider">REV</span>
+              </button>
+            </div>
+
+            {/* Primary Column: Item & Speed Gas Pedal */}
+            <div className="flex flex-col gap-2 items-center">
+              {/* Item Button */}
+              <button
+                onTouchStart={(e) => { e.preventDefault(); touchControls.useItem = true; }}
+                onMouseDown={() => { touchControls.useItem = true; }}
+                className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-emerald-950/85 active:bg-emerald-500/50 backdrop-blur-md border-2 border-emerald-400/80 flex flex-col items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-90 transition-transform cursor-pointer"
+                aria-label="Use Item"
+              >
+                <span className="text-2xl">🎁</span>
+                <span className="text-[9px] font-black uppercase text-emerald-300 tracking-wider">ITEM</span>
+              </button>
+
+              {/* Speed (Gas) Button */}
+              <button
+                onTouchStart={(e) => { e.preventDefault(); touchControls.accelerate = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); touchControls.accelerate = false; }}
+                onTouchCancel={() => { touchControls.accelerate = false; }}
+                onMouseDown={() => { touchControls.accelerate = true; }}
+                onMouseUp={() => { touchControls.accelerate = false; }}
+                className="w-22 h-30 sm:w-26 sm:h-34 rounded-3xl bg-gradient-to-t from-cyan-600 via-sky-500 to-cyan-400 active:from-cyan-400 active:to-sky-300 backdrop-blur-md border-3 border-white/90 flex flex-col items-center justify-center shadow-[0_0_35px_rgba(0,240,255,0.6)] active:scale-95 transition-transform cursor-pointer"
+                aria-label="Speed Accelerate"
+              >
+                <span className="text-4xl text-white font-black drop-shadow-md">⚡</span>
+                <span className="text-sm font-black italic uppercase text-slate-950 tracking-wider">SPEED</span>
+                <span className="text-[9px] font-bold text-slate-900 tracking-widest mt-0.5">GAS</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 11. Landscape Auto-Rotate Advisory (When phone held straight / in portrait) */}
+      {isPortrait && isTouchDevice && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-2xl p-6 text-center pointer-events-auto">
+          <div className="relative mb-6">
+            <div className="w-24 h-24 rounded-3xl bg-blue-900/40 border-2 border-cyan-400/80 flex items-center justify-center text-5xl shadow-[0_0_35px_rgba(0,240,255,0.4)] animate-bounce">
+              📱
+            </div>
+            <div className="absolute -bottom-2 -right-2 text-3xl animate-spin">
+              🔄
+            </div>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-cyan-300 mb-3 drop-shadow-md">
+            ROTATE DEVICE TO LANDSCAPE
+          </h2>
+          <p className="text-sm font-semibold text-sky-200 max-w-sm mb-6 leading-relaxed">
+            Turn your phone sideways for wide-angle arcade racing, responsive steering, and full-screen controls!
+          </p>
+          <button
+            onClick={() => requestLandscapeOrientation()}
+            className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black italic tracking-wider uppercase text-sm shadow-[0_0_30px_rgba(0,240,255,0.6)] active:scale-95 transition-all cursor-pointer"
+          >
+            AUTOROTATE & FULLSCREEN ⚡
+          </button>
+        </div>
+      )}
     </div>
   );
 };

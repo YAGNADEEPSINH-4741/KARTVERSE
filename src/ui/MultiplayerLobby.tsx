@@ -86,6 +86,7 @@ export const MultiplayerLobby: React.FC = () => {
   const handleStartRace = () => {
     audio.playMenuClick();
     socketManager.startRace();
+    setRaceMode('MULTIPLAYER');
     setScreen('QUICK_RACE');
   };
 

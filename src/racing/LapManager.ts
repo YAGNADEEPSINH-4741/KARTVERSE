@@ -22,8 +22,8 @@ export interface RacerProgress {
   state: RacerLapState;
   
   // Checkpoint validation
-  lastPassedCheckpoint: number; // Last verified checkpoint index
-  nextExpectedCheckpoint: number; // Next checkpoint in sequence
+  lastPassedCheckpoint: number; // Last verified checkpoint index (-1 = on starting grid before gate 0)
+  nextExpectedCheckpoint: number; // Next checkpoint in sequence (0 = start line)
   checkpointsPassedThisLap: Set<number>; // Tracks all checkpoints visited in current lap
   
   // Timing & stats
@@ -78,9 +78,10 @@ export class LapManager {
       prog.state = 'RACING';
       prog.lapStartTime = now;
       prog.checkpointsPassedThisLap.clear();
-      // Expect checkpoint 1 first, since racers start at the gantry (checkpoint 0)
-      prog.lastPassedCheckpoint = 0;
-      prog.nextExpectedCheckpoint = 1;
+      // Racers start on the grid before gate 0 (the start/finish gantry)
+      prog.lastPassedCheckpoint = -1;
+      prog.nextExpectedCheckpoint = 0;
+      prog.lastFinishCrossTime = now;
     });
   }
 
@@ -104,18 +105,19 @@ export class LapManager {
     const currentGateIdx = Math.max(0, prog.lastPassedCheckpoint);
     const refGate = this.checkpoints[currentGateIdx % this.checkpoints.length];
     const dotDirection = forward.dot(refGate.tangent);
-    prog.isWrongWay = dotDirection < -0.3; // Heading backwards
+    prog.isWrongWay = isLocalPlayer && dotDirection < -0.3; // Heading backwards
 
     let lapCompleted = false;
     let raceCompleted = false;
 
-    // Check all gates in forward lookahead window (current through next 2 gates)
-    // This allows robust frame-step tolerance while strictly enforcing sequence
+    // Check all gates in forward lookahead window
     const numGates = this.checkpoints.length;
-    const candidates = [
-      prog.nextExpectedCheckpoint,
-      (prog.nextExpectedCheckpoint + 1) % numGates
-    ];
+    const candidates = prog.lastPassedCheckpoint === -1
+      ? [0, 1]
+      : [
+          prog.nextExpectedCheckpoint,
+          (prog.nextExpectedCheckpoint + 1) % numGates
+        ];
 
     for (const gateIdx of candidates) {
       const gate = this.checkpoints[gateIdx];
@@ -128,51 +130,57 @@ export class LapManager {
       // Vertical clearance
       const distVertical = Math.abs(position.y - gate.center.y);
 
-      const inCorridor = distLateral <= gate.width * 0.8 && distVertical <= 7.0;
-      const inCrossingPlane = distLongitudinal >= -2.5 && distLongitudinal <= 7.0;
+      const inCorridor = distLateral <= gate.width * 1.5 && distVertical <= 10.0;
+      const inCrossingPlane = distLongitudinal >= -4.0 && distLongitudinal <= 10.0;
 
-      // Ensure crossing occurs while travelling forward
-      const isMovingForward = dotDirection > 0.05;
+      // Ensure crossing occurs while travelling forward (tolerant for AI/remote racers)
+      const isMovingForward = !isLocalPlayer || dotDirection > -0.2;
 
       if (inCorridor && inCrossingPlane && isMovingForward) {
         // ------------------------------------------------------------------
         // CASE A: Crossing Start/Finish Line (Gate 0)
         // ------------------------------------------------------------------
         if (gateIdx === 0) {
-          // Can ONLY complete a lap if:
-          // 1. Race is active (not WAITING_FOR_START)
-          // 2. Minimum cooldown between lap completions (e.g. 10 seconds)
-          // 3. Has validated at least 80% of checkpoints in sequence
-          const minLapCooldown = 10.0;
-          const timeSinceLastLap = currentTime - prog.lastFinishCrossTime;
-          const minCheckpointsRequired = Math.floor(numGates * 0.8);
-          const hasSufficientCheckpoints = prog.checkpointsPassedThisLap.size >= minCheckpointsRequired;
-
-          if (prog.state === 'RACING' && timeSinceLastLap > minLapCooldown && hasSufficientCheckpoints) {
-            const lapDuration = currentTime - prog.lapStartTime;
-            prog.lapTimes.push(lapDuration);
-            if (prog.bestLapTime === 0 || lapDuration < prog.bestLapTime) {
-              prog.bestLapTime = lapDuration;
-            }
-
+          if (prog.lastPassedCheckpoint === -1) {
+            // Crossing the start line for the first time at the start of the race!
+            prog.lastPassedCheckpoint = 0;
+            prog.nextExpectedCheckpoint = 1;
             prog.lapStartTime = currentTime;
             prog.lastFinishCrossTime = currentTime;
             prog.checkpointsPassedThisLap.clear();
-            prog.lastPassedCheckpoint = 0;
-            prog.nextExpectedCheckpoint = 1;
-            lapCompleted = true;
+          } else {
+            // Normal finish line crossing to complete a lap
+            const minLapCooldown = 8.0;
+            const timeSinceLastLap = currentTime - prog.lastFinishCrossTime;
+            const minCheckpointsRequired = Math.floor(numGates * 0.7);
+            const hasSufficientCheckpoints = prog.checkpointsPassedThisLap.size >= minCheckpointsRequired;
 
-            if (isLocalPlayer) {
-              audio.playCheckpoint();
-            }
+            if (prog.state === 'RACING' && timeSinceLastLap > minLapCooldown && hasSufficientCheckpoints) {
+              const lapDuration = currentTime - prog.lapStartTime;
+              prog.lapTimes.push(lapDuration);
+              if (prog.bestLapTime === 0 || lapDuration < prog.bestLapTime) {
+                prog.bestLapTime = lapDuration;
+              }
 
-            if (prog.lap >= this.totalLaps) {
-              prog.isFinished = true;
-              prog.state = 'RACE_FINISHED';
-              prog.totalRaceTime = prog.lapTimes.reduce((a, b) => a + b, 0);
-              raceCompleted = true;
-            } else {
-              prog.lap += 1;
+              prog.lapStartTime = currentTime;
+              prog.lastFinishCrossTime = currentTime;
+              prog.checkpointsPassedThisLap.clear();
+              prog.lastPassedCheckpoint = 0;
+              prog.nextExpectedCheckpoint = 1;
+              lapCompleted = true;
+
+              if (isLocalPlayer) {
+                audio.playCheckpoint();
+              }
+
+              if (prog.lap >= this.totalLaps) {
+                prog.isFinished = true;
+                prog.state = 'RACE_FINISHED';
+                prog.totalRaceTime = prog.lapTimes.reduce((a, b) => a + b, 0);
+                raceCompleted = true;
+              } else {
+                prog.lap += 1;
+              }
             }
           }
         } 

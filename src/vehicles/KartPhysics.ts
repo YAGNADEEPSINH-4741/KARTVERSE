@@ -56,7 +56,8 @@ export class KartPhysics {
     steer: number,      // -1 (left), 0, 1 (right)
     wantsDrift: boolean,
     wantsNitro: boolean,
-    visual?: KartVisual
+    visual?: KartVisual,
+    isBrakeOnly = false
   ): void {
     // 1. Handle spinout recovery
     if (this.isSpinningOut) {
@@ -113,12 +114,18 @@ export class KartPhysics {
           // Active Braking: firmly decelerate to zero, NEVER allow negative speed!
           this.speed = Math.max(0, this.speed - 42.0 * delta);
         } else {
-          // Fully stopped and still holding reverse input: engage Reverse Gear
-          this.speed = 0;
-          this.reverseEngageTimer += delta;
-          if (this.reverseEngageTimer > 0.15) {
-            this.isReversing = true;
+          // If brake only (e.g. dedicated Brake button), stay firmly stopped at 0
+          if (isBrakeOnly) {
+            this.speed = 0;
             this.reverseEngageTimer = 0;
+          } else {
+            // Fully stopped and holding reverse input: engage Reverse Gear
+            this.speed = 0;
+            this.reverseEngageTimer += delta;
+            if (this.reverseEngageTimer > 0.12) {
+              this.isReversing = true;
+              this.reverseEngageTimer = 0;
+            }
           }
         }
       } else {

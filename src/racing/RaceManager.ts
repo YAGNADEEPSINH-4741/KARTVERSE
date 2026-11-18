@@ -34,7 +34,7 @@ export class RaceManager {
 
   public update(
     delta: number,
-    racerPositions: { id: string; position: THREE.Vector3 }[],
+    racerPositions: { id: string; position: THREE.Vector3; forward?: THREE.Vector3 }[],
     localPlayerId: string,
     forward: THREE.Vector3
   ): { canDrive: boolean; isCountdown: boolean; localRank: number; totalRacers: number } {
@@ -89,7 +89,7 @@ export class RaceManager {
 
     for (const r of racerPositions) {
       const isLocal = r.id === localPlayerId;
-      const rFwd = isLocal ? forward : new THREE.Vector3(0, 0, 1);
+      const rFwd = r.forward || (isLocal ? forward : new THREE.Vector3(0, 0, 1));
       const res = this.lapManager.updateRacer(r.id, r.position, rFwd, currentTime, isLocal);
 
       if (isLocal) {

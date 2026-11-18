@@ -14,6 +14,7 @@ export interface RemotePlayerEntity {
   visual: KartVisual;
   nametagSprite?: THREE.Sprite;
   targetPosition: THREE.Vector3;
+  targetVelocity: THREE.Vector3;
   currentPosition: THREE.Vector3;
   targetRotationY: number;
   currentRotationY: number;
@@ -59,6 +60,7 @@ export class NetworkSync {
       visual,
       nametagSprite,
       targetPosition: new THREE.Vector3(),
+      targetVelocity: new THREE.Vector3(),
       currentPosition: new THREE.Vector3(),
       targetRotationY: 0,
       currentRotationY: 0,
@@ -123,31 +125,42 @@ export class NetworkSync {
     entity.targetRotationY = packet.rotationY;
     entity.targetSpeed = packet.speed;
     entity.driftLevel = packet.driftLevel;
+
+    // Extrapolation velocity vector for zero-delay dead-reckoning
+    const vx = Math.sin(packet.rotationY) * packet.speed;
+    const vz = Math.cos(packet.rotationY) * packet.speed;
+    entity.targetVelocity.set(vx, 0, vz);
+
     entity.lastUpdate = performance.now();
   }
 
   public update(delta: number): void {
-    const lerpRate = Math.min(1.0, delta * 15.0); // Smooth interpolation at 60fps
+    const now = performance.now();
 
     for (const [_, entity] of this.remotePlayers.entries()) {
-      // Position lerp
-      entity.currentPosition.lerp(entity.targetPosition, lerpRate);
+      // 1. Dead-Reckoning: Extrapolate target position along velocity vector for elapsed time
+      const elapsedSec = Math.min(0.25, Math.max(0, (now - entity.lastUpdate) / 1000));
+      const projectedTarget = entity.targetPosition.clone().addScaledVector(entity.targetVelocity, elapsedSec);
+
+      // 2. High-speed smooth lerp towards predicted position (zero delay)
+      const lerpRate = Math.min(1.0, delta * 22.0);
+      entity.currentPosition.lerp(projectedTarget, lerpRate);
       entity.visual.group.position.copy(entity.currentPosition);
 
-      // Rotation lerp with angle wrap handling
+      // 3. Rotation lerp with angle wrap handling
       let diff = entity.targetRotationY - entity.currentRotationY;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
       entity.currentRotationY += diff * lerpRate;
       entity.visual.group.rotation.y = entity.currentRotationY;
 
-      // Wheel spin animation based on speed
+      // 4. Wheel spin animation based on speed
       const wheelSpin = (entity.targetSpeed * delta * 5) % (Math.PI * 2);
       entity.visual.wheels.forEach(w => {
         w.rotation.x += wheelSpin;
       });
 
-      // Drift sparks visualization
+      // 5. Drift sparks visualization
       if (entity.driftLevel > 0) {
         entity.visual.driftSparks.forEach(s => (s.visible = true));
       } else {
