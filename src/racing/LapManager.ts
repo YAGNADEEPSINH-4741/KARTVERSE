@@ -213,4 +213,12 @@ export class LapManager {
   public getProgress(id: string): RacerProgress | undefined {
     return this.progressMap.get(id);
   }
+
+  public hasRacer(id: string): boolean {
+    return this.progressMap.has(id);
+  }
+
+  public removeRacer(id: string): void {
+    this.progressMap.delete(id);
+  }
 }

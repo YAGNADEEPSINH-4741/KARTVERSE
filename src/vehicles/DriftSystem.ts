@@ -47,7 +47,7 @@ export class DriftSystem {
       // 1. Initiate drift if steering into a turn
       if (!this.isDrifting && Math.abs(steerInput) > 0.15) {
         this.isDrifting = true;
-        this.driftDirection = steerInput > 0 ? 'RIGHT' : 'LEFT';
+        this.driftDirection = steerInput > 0 ? 'LEFT' : 'RIGHT';
         this.driftTimer = 0;
         this.driftTier = 0;
       }
@@ -57,7 +57,7 @@ export class DriftSystem {
 
         // Steering influence on drift tightness
         // Steering into drift tightens the arc; counter-steering widens the arc
-        const dirSign = this.driftDirection === 'RIGHT' ? 1 : -1;
+        const dirSign = this.driftDirection === 'LEFT' ? 1 : -1;
         const steerBonus = steerInput * dirSign; // positive if steering into drift
         const targetAngle = dirSign * (0.42 + steerBonus * 0.18);
         this.driftAngle = THREE.MathUtils.lerp(this.driftAngle, targetAngle, 12 * delta);
@@ -144,6 +144,6 @@ export class DriftSystem {
   }
 
   public getDirection(): number {
-    return this.driftDirection === 'RIGHT' ? 1 : this.driftDirection === 'LEFT' ? -1 : 0;
+    return this.driftDirection === 'LEFT' ? 1 : this.driftDirection === 'RIGHT' ? -1 : 0;
   }
 }

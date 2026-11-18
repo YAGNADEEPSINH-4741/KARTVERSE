@@ -30,11 +30,16 @@ export class SocketManager {
   private localPlayerId: string = 'player_' + Math.random().toString(36).substring(2, 9);
   private lastTelemetryTime = 0;
   private currentRoomCode: string | null = null;
+  private heartbeatInterval: any = null;
+  private healthCheckInterval: any = null;
+  private lastHeartbeatMap: Map<string, number> = new Map();
+  private isReconnecting = false;
 
   public onRemoteTelemetry?: (packet: RemoteTelemetryPacket) => void;
   public onRemoteItemUse?: (data: { playerId: string; itemType: PowerUpType; position: any; direction: any }) => void;
   public onCountdownStart?: (countdown: number) => void;
   public onRaceStart?: () => void;
+  public onPlayerLeft?: (playerId: string, reason: string) => void;
 
   public static getInstance(): SocketManager {
     if (!SocketManager.instance) {
@@ -166,6 +171,21 @@ export class SocketManager {
         playerList.push(localPlayer);
       }
 
+      // Preserve active players during live race if presence temporarily drops
+      const currentScreen = useGameStore.getState().currentScreen;
+      if (['QUICK_RACE', 'GRAND_PRIX'].includes(currentScreen)) {
+        const existing = useGameStore.getState().roomPlayers;
+        for (const exp of existing) {
+          if (!playerList.some(p => p.id === exp.id)) {
+            const lastSeen = this.lastHeartbeatMap.get(exp.id) || 0;
+            // Retain player if they sent telemetry/heartbeat recently (within 15s)
+            if (Date.now() - lastSeen < 15000) {
+              playerList.push(exp);
+            }
+          }
+        }
+      }
+
       // Sort Host first, then others
       playerList.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0));
       useGameStore.getState().setRoomPlayers(playerList);
@@ -199,21 +219,44 @@ export class SocketManager {
 
     // 5. Zero-Delay High-Frequency Telemetry Broadcast (25-30Hz)
     this.supabaseChannel.on('broadcast', { event: 'telemetry' }, ({ payload }) => {
-      if (payload.id !== this.localPlayerId && this.onRemoteTelemetry) {
-        this.onRemoteTelemetry({
-          playerId: payload.id,
-          position: { x: payload.x, y: payload.y, z: payload.z },
-          rotationY: payload.rotY,
-          speed: payload.speed,
-          driftLevel: payload.driftLevel || 0,
-          pitch: 0,
-          roll: 0,
-          timestamp: Date.now()
-        });
+      if (payload && payload.id !== this.localPlayerId) {
+        // Record heartbeat timestamp from active telemetry
+        this.lastHeartbeatMap.set(payload.id, Date.now());
+
+        if (this.onRemoteTelemetry) {
+          this.onRemoteTelemetry({
+            playerId: payload.id,
+            position: { x: payload.x, y: payload.y, z: payload.z },
+            rotationY: payload.rotY,
+            speed: payload.speed,
+            driftLevel: payload.driftLevel || 0,
+            pitch: 0,
+            roll: 0,
+            timestamp: Date.now()
+          });
+        }
       }
     });
 
-    // 6. Power-Up Item Events
+    // 6. Reliable Heartbeat Broadcast Listener
+    this.supabaseChannel.on('broadcast', { event: 'player_heartbeat' }, ({ payload }) => {
+      if (payload && payload.id && payload.id !== this.localPlayerId) {
+        this.lastHeartbeatMap.set(payload.id, Date.now());
+      }
+    });
+
+    // 7. Explicit Player Departure Listener (Tab Close / Exit Race)
+    this.supabaseChannel.on('broadcast', { event: 'player_left' }, ({ payload }) => {
+      if (payload && payload.id && payload.id !== this.localPlayerId) {
+        console.log(`[MULTIPLAYER] Inbound player_left notification: ${payload.id}, reason: ${payload.reason}`);
+        this.lastHeartbeatMap.delete(payload.id);
+        if (this.onPlayerLeft) {
+          this.onPlayerLeft(payload.id, payload.reason || 'LEFT');
+        }
+      }
+    });
+
+    // 8. Power-Up Item Events
     this.supabaseChannel.on('broadcast', { event: 'use_item' }, ({ payload }) => {
       if (payload.senderId !== this.localPlayerId && this.onRemoteItemUse) {
         this.onRemoteItemUse({
@@ -225,12 +268,108 @@ export class SocketManager {
       }
     });
 
-    // Subscribe and track local presence
+    // Subscribe and track local presence with auto-reconnect
     this.supabaseChannel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED' && this.supabaseChannel) {
         await this.supabaseChannel.track(localPlayer);
+        // Start continuous heartbeat & health monitoring
+        this.startHeartbeat(localPlayer);
+      } else if (['CLOSED', 'TIMED_OUT', 'CHANNEL_ERROR'].includes(status)) {
+        console.warn(`[MULTIPLAYER] Channel disconnected (${status}). Auto-reconnecting in 2s...`);
+        if (this.currentRoomCode && !this.isReconnecting) {
+          this.isReconnecting = true;
+          setTimeout(() => {
+            this.isReconnecting = false;
+            if (this.currentRoomCode && this.supabaseChannel) {
+              this.supabaseChannel.subscribe();
+            }
+          }, 2000);
+        }
       }
     });
+  }
+
+  // ==========================================================================
+  // HEARTBEAT & HEALTH MONITORING SYSTEM
+  // ==========================================================================
+  private startHeartbeat(localPlayer: MultiplayerPlayer): void {
+    this.stopHeartbeat();
+
+    // 1. Send immediate heartbeat
+    this.sendHeartbeat(localPlayer);
+
+    // 2. High-reliability 3.5s presence & heartbeat ping
+    this.heartbeatInterval = setInterval(() => {
+      this.sendHeartbeat(localPlayer);
+    }, 3500);
+
+    // 3. Stale player health-check loop every 3.0s
+    this.healthCheckInterval = setInterval(() => {
+      this.checkRemoteRacersHealth();
+    }, 3000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+  }
+
+  private sendHeartbeat(localPlayer: MultiplayerPlayer): void {
+    if (!this.supabaseChannel) return;
+    // Refresh channel presence so Supabase Realtime never times out the client
+    this.supabaseChannel.track(localPlayer).catch(() => {});
+    // Broadcast ping to all connected peers
+    this.supabaseChannel.send({
+      type: 'broadcast',
+      event: 'player_heartbeat',
+      payload: { id: this.localPlayerId, timestamp: Date.now() }
+    }).catch(() => {});
+  }
+
+  private checkRemoteRacersHealth(): void {
+    const now = Date.now();
+    const currentScreen = useGameStore.getState().currentScreen;
+    // Health check active in lobby and racing screens
+    const roomPlayers = useGameStore.getState().roomPlayers;
+
+    for (const p of roomPlayers) {
+      if (p.id === this.localPlayerId) continue;
+      const lastSeen = this.lastHeartbeatMap.get(p.id);
+      // If we have seen them before and they have sent no packet for > 15 seconds
+      if (lastSeen && (now - lastSeen > 15000)) {
+        console.warn(`[MULTIPLAYER] Player ${p.id} (${p.username}) timed out after 15s`);
+        this.lastHeartbeatMap.delete(p.id);
+        if (this.onPlayerLeft) {
+          this.onPlayerLeft(p.id, 'TIMEOUT');
+        }
+      }
+    }
+  }
+
+  public async leaveRace(reason: string = 'USER_EXIT'): Promise<void> {
+    console.log(`[MULTIPLAYER] Leaving room/race: ${this.currentRoomCode}, reason: ${reason}`);
+    this.stopHeartbeat();
+    if (this.supabaseChannel) {
+      try {
+        await this.supabaseChannel.send({
+          type: 'broadcast',
+          event: 'player_left',
+          payload: { id: this.localPlayerId, reason }
+        });
+        await this.supabaseChannel.untrack();
+        // Brief 150ms delay to ensure WebSocket frame is dispatched before unsubscription
+        await new Promise(r => setTimeout(r, 150));
+      } catch (e) {
+        // quiet catch
+      }
+    }
+    this.disconnect();
   }
 
   // ==========================================================================
@@ -296,6 +435,12 @@ export class SocketManager {
           speed: telemetry.speed,
           driftLevel: telemetry.driftLevel
         }
+      }).then(res => {
+        if (Math.random() < 0.05) {
+          console.log(`[TELEMETRY_SEND] ${this.localPlayerId} result: ${res}`);
+        }
+      }).catch(err => {
+        console.error(`[TELEMETRY_SEND_ERR] ${this.localPlayerId}`, err);
       });
     }
 
@@ -357,16 +502,22 @@ export class SocketManager {
   }
 
   public disconnect(): void {
-    if (this.supabaseChannel) {
-      this.supabaseChannel.unsubscribe();
-      this.supabaseChannel = null;
+    this.stopHeartbeat();
+    this.lastHeartbeatMap.clear();
+    const ch = this.supabaseChannel;
+    this.supabaseChannel = null;
+    this.currentRoomCode = null;
+    if (ch) {
+      ch.unsubscribe();
     }
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
-    this.currentRoomCode = null;
   }
 }
 
 export const socketManager = SocketManager.getInstance();
+if (typeof window !== 'undefined') {
+  (window as any).__socketManager = socketManager;
+}

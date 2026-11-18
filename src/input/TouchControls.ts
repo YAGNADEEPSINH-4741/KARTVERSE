@@ -25,6 +25,10 @@ export const touchControls: TouchInputState = {
   useItem: false
 };
 
+if (typeof window !== 'undefined') {
+  (window as any).touchControls = touchControls;
+}
+
 // Reset all touch inputs on screen switch / pause
 export function resetTouchControls(): void {
   touchControls.steerLeft = false;

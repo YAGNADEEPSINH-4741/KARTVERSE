@@ -151,7 +151,7 @@ export class KartPhysics {
 
       // In drift mode, turn rate increases and is directed along drift heading
       if (this.drift.isDrifting) {
-        const driftDirectionSign = this.drift.driftDirection === 'RIGHT' ? 1 : -1;
+        const driftDirectionSign = this.drift.driftDirection === 'LEFT' ? 1 : -1;
         turnRate += driftDirectionSign * 1.35 * delta;
       }
 

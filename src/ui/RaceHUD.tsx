@@ -40,7 +40,7 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
 
       // Attempt orientation lock to landscape if on mobile/tablet
       if (mobile && portrait) {
-        requestLandscapeOrientation().catch(() => {});
+        requestLandscapeOrientation().catch(() => { });
       }
     };
 
@@ -89,12 +89,12 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
   }, [trackSplinePoints]);
 
   useEffect(() => {
-    if (telemetry.countdownNumber !== null) {
+    if (telemetry.countdownNumber !== null && telemetry.countdownNumber !== undefined) {
       setVisibleCountdown(telemetry.countdownNumber);
       if (telemetry.countdownNumber === 0) {
         const timer = setTimeout(() => {
           setVisibleCountdown(null);
-        }, 1200);
+        }, 900);
         return () => clearTimeout(timer);
       }
     } else {
@@ -163,9 +163,9 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
 
     const themeGlow =
       trackConfig.theme === 'CYBER' ? '#00f0ff' :
-      trackConfig.theme === 'LAVA' ? '#f59e0b' :
-      trackConfig.theme === 'FOREST' ? '#10b981' :
-      trackConfig.theme === 'ICE' ? '#38bdf8' : '#0284c7';
+        trackConfig.theme === 'LAVA' ? '#f59e0b' :
+          trackConfig.theme === 'FOREST' ? '#10b981' :
+            trackConfig.theme === 'ICE' ? '#38bdf8' : '#0284c7';
 
     // 1. Subtle background radar scanlines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
@@ -354,15 +354,14 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
           {/* Top Left: Premium Position Badge & Lap Counter */}
           <div className="absolute top-6 left-6 flex items-start gap-4">
             {/* Position Badge */}
-            <div className={`backdrop-blur-md rounded-2xl px-5 py-3 flex items-baseline gap-1.5 transition-all shadow-2xl ${
-              telemetry.position === 1
-                ? 'bg-gradient-to-br from-amber-500/90 via-yellow-400/90 to-amber-600/90 border-2 border-yellow-300 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.6)]'
-                : telemetry.position === 2
+            <div className={`backdrop-blur-md rounded-2xl px-5 py-3 flex items-baseline gap-1.5 transition-all shadow-2xl ${telemetry.position === 1
+              ? 'bg-gradient-to-br from-amber-500/90 via-yellow-400/90 to-amber-600/90 border-2 border-yellow-300 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.6)]'
+              : telemetry.position === 2
                 ? 'bg-gradient-to-br from-slate-200 via-slate-300 to-slate-400 border-2 border-white text-slate-950 shadow-[0_0_25px_rgba(255,255,255,0.4)]'
                 : telemetry.position === 3
-                ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800 border-2 border-amber-400 text-white shadow-[0_0_20px_rgba(217,119,6,0.5)]'
-                : 'bg-blue-950/85 border-2 border-cyan-500/60 text-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.3)]'
-            }`}>
+                  ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800 border-2 border-amber-400 text-white shadow-[0_0_20px_rgba(217,119,6,0.5)]'
+                  : 'bg-blue-950/85 border-2 border-cyan-500/60 text-cyan-400 shadow-[0_0_20px_rgba(0,240,255,0.3)]'
+              }`}>
               <span className="text-3xl">
                 {telemetry.position === 1 ? '👑' : telemetry.position === 2 ? '🥈' : telemetry.position === 3 ? '🥉' : '🏁'}
               </span>
@@ -399,16 +398,14 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
                   return (
                     <div
                       key={r.id}
-                      className={`flex items-center justify-between px-2 py-1 rounded-lg text-xs transition-all ${
-                        isPlayer
-                          ? 'bg-gradient-to-r from-cyan-500/30 to-blue-600/30 border border-cyan-400/80 text-cyan-200 font-black shadow-[0_0_12px_rgba(0,240,255,0.35)]'
-                          : 'bg-blue-900/30 text-slate-200 font-semibold'
-                      }`}
+                      className={`flex items-center justify-between px-2 py-1 rounded-lg text-xs transition-all ${isPlayer
+                        ? 'bg-gradient-to-r from-cyan-500/30 to-blue-600/30 border border-cyan-400/80 text-cyan-200 font-black shadow-[0_0_12px_rgba(0,240,255,0.35)]'
+                        : 'bg-blue-900/30 text-slate-200 font-semibold'
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
-                        <span className={`w-4 text-[10px] font-black ${
-                          r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-slate-200' : r.rank === 3 ? 'text-amber-500' : 'text-sky-300'
-                        }`}>
+                        <span className={`w-4 text-[10px] font-black ${r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-slate-200' : r.rank === 3 ? 'text-amber-500' : 'text-sky-300'
+                          }`}>
                           #{r.rank}
                         </span>
                         <span className="truncate max-w-[100px] text-[11px]">
@@ -475,11 +472,10 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
           {/* Bottom Right: Speedometer & Nitro Meter */}
           <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3 z-20">
             {/* Nitro Meter */}
-            <div className={`w-48 bg-blue-950/85 backdrop-blur-md rounded-xl p-2.5 transition-all shadow-lg ${
-              telemetry.isNitroActive 
-                ? 'border-2 border-cyan-400 shadow-[0_0_25px_#00f0ff] animate-pulse' 
-                : 'border border-cyan-500/40'
-            }`}>
+            <div className={`w-48 bg-blue-950/85 backdrop-blur-md rounded-xl p-2.5 transition-all shadow-lg ${telemetry.isNitroActive
+              ? 'border-2 border-cyan-400 shadow-[0_0_25px_#00f0ff] animate-pulse'
+              : 'border border-cyan-500/40'
+              }`}>
               <div className="flex justify-between items-center mb-1">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-1">
                   {telemetry.isNitroActive ? '🔥 NITRO BOOST!' : 'NITRO'}
@@ -488,11 +484,10 @@ export const RaceHUD: React.FC<RaceHUDProps> = ({ onExit }) => {
               </div>
               <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
                 <div
-                  className={`h-full rounded-full transition-all duration-100 ${
-                    telemetry.isNitroActive 
-                      ? 'bg-gradient-to-r from-amber-400 via-cyan-400 to-white shadow-[0_0_15px_#00f0ff]' 
-                      : 'bg-gradient-to-r from-cyan-500 to-blue-500 shadow-[0_0_10px_#00f0ff]'
-                  }`}
+                  className={`h-full rounded-full transition-all duration-100 ${telemetry.isNitroActive
+                    ? 'bg-gradient-to-r from-amber-400 via-cyan-400 to-white shadow-[0_0_15px_#00f0ff]'
+                    : 'bg-gradient-to-r from-cyan-500 to-blue-500 shadow-[0_0_10px_#00f0ff]'
+                    }`}
                   style={{ width: `${telemetry.nitroPercent}%` }}
                 />
               </div>

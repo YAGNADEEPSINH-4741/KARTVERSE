@@ -246,6 +246,7 @@ export class GameEngine {
     const kartId = store.selectedKart;
     const kartColor = store.kartColor;
     const isMultiplayer = store.raceMode === 'MULTIPLAYER';
+    console.log(`[INIT_RACE_SESSION] isMultiplayer=${isMultiplayer}, raceMode=${store.raceMode}, currentScreen=${store.currentScreen}`);
 
     this.clearRaceEntities();
 
@@ -386,6 +387,14 @@ export class GameEngine {
 
       socketManager.onRemoteTelemetry = (packet) => {
         this.networkSync.handleTelemetry(packet);
+        if (!this.lapManager.hasRacer(packet.playerId)) {
+          const pInfo = useGameStore.getState().roomPlayers.find(p => p.id === packet.playerId);
+          this.lapManager.registerRacer(packet.playerId, pInfo?.username || 'Remote Racer');
+        }
+      };
+
+      socketManager.onPlayerLeft = (playerId: string, reason: string) => {
+        this.handleRemotePlayerDeparture(playerId, reason);
       };
 
       socketManager.onRemoteItemUse = (data) => {
@@ -401,6 +410,38 @@ export class GameEngine {
 
     // 6. Start Countdown
     this.raceManager.startCountdown();
+  }
+
+  public handleRemotePlayerDeparture(playerId: string, reason: string): void {
+    console.log(`[MULTIPLAYER] Handling departure for ${playerId}, reason: ${reason}`);
+    // 1. Remove 3D visual & nametag from scene
+    this.networkSync.removePlayer(playerId);
+
+    // 2. Remove from lap manager
+    this.lapManager.removeRacer(playerId);
+
+    // 3. Filter roomPlayers in store
+    const store = useGameStore.getState();
+    const updated = store.roomPlayers.filter(p => p.id !== playerId);
+    store.setRoomPlayers(updated);
+
+    // 4. Standings & Auto-Win Check
+    if (this.mode === 'RACING') {
+      const remainingCount = 1 + this.networkSync.remotePlayers.size;
+
+      // Auto-Win: If only 1 player remains in multiplayer race, declare victory!
+      if (store.raceMode === 'MULTIPLAYER' && (this.raceManager.state === 'RACING' || this.raceManager.state === 'COUNTDOWN')) {
+        if (this.networkSync.remotePlayers.size === 0) {
+          console.log('[AUTO-WIN] All opponents left! Local player automatically wins 1st place 🏆');
+          this.raceManager.finishRace('local_player', 1);
+          return;
+        }
+      }
+
+      store.setTelemetry({
+        totalRacers: remainingCount
+      });
+    }
   }
 
   private clearRaceEntities(): void {
@@ -535,7 +576,8 @@ export class GameEngine {
     // 1. Read Inputs (Keyboard & On-Screen Mobile/Tablet Touch Controls)
     const steerLeft = this.keys['ArrowLeft'] || this.keys['KeyA'] || touchControls.steerLeft;
     const steerRight = this.keys['ArrowRight'] || this.keys['KeyD'] || touchControls.steerRight;
-    const steer = (steerRight ? 1.0 : 0.0) - (steerLeft ? 1.0 : 0.0);
+    // Left input turns left (positive yaw rate), Right input turns right (negative yaw rate)
+    const steer = (steerLeft ? 1.0 : 0.0) - (steerRight ? 1.0 : 0.0);
 
     const wantsAccel = this.keys['ArrowUp'] || this.keys['KeyW'] || touchControls.accelerate;
     const wantsBrake = touchControls.brake;
@@ -639,6 +681,9 @@ export class GameEngine {
       this.telemetrySendTimer += delta;
       if (this.telemetrySendTimer >= 0.033) {
         this.telemetrySendTimer = 0;
+        if (Math.random() < 0.05) {
+          console.log(`[ENGINE_SEND_TELEMETRY] localId=${socketManager.getLocalPlayerId()}`);
+        }
         socketManager.sendTelemetry({
           position: {
             x: this.localKartPhysics.position.x,

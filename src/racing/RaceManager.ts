@@ -30,6 +30,7 @@ export class RaceManager {
     this.countdownTimer = 3.99;
     this.countdownValue = 3;
     audio.playCountdown(3);
+    useGameStore.getState().setRaceStatus('COUNTDOWN');
   }
 
   public update(
@@ -57,6 +58,7 @@ export class RaceManager {
           this.state = 'RACING';
           this.raceStartTime = performance.now() / 1000;
           this.lapManager.onRaceStart();
+          useGameStore.getState().setRaceStatus('RACING');
         }
       }
 
@@ -72,10 +74,10 @@ export class RaceManager {
       };
     }
 
-    // Clear countdown UI after "GO!" displays for 1.2 seconds into the race
+    // Clear countdown UI after "GO!" displays for 1.0 second into the race
     if (this.countdownValue !== null) {
       this.countdownTimer -= delta;
-      if (this.countdownTimer < -1.2) {
+      if (this.countdownTimer < -1.0) {
         this.countdownValue = null;
         useGameStore.getState().setTelemetry({ countdownNumber: null });
       }
@@ -138,14 +140,23 @@ export class RaceManager {
     };
   }
 
-  private finishRace(localPlayerId: string): void {
+  public finishRace(localPlayerId: string, forceRank?: number): void {
+    if (this.state === 'FINISHED') return;
     this.state = 'FINISHED';
-    useGameStore.getState().setRaceStatus('FINISHED');
 
     const localProg = this.lapManager.getProgress(localPlayerId);
-    const finalRank = this.ranks.find(r => r.id === localPlayerId)?.rank || 1;
+    const finalRank = forceRank !== undefined ? forceRank : (this.ranks.find(r => r.id === localPlayerId)?.rank || 1);
     const finalTime = localProg ? localProg.totalRaceTime : this.totalRaceTime;
     const bestLap = localProg ? localProg.bestLapTime : 0;
+    const totalRacersCount = forceRank !== undefined ? 1 : this.ranks.length;
+
+    // Immediately update store state and telemetry
+    useGameStore.getState().setRaceStatus('FINISHED');
+    useGameStore.getState().setTelemetry({
+      position: finalRank,
+      totalRacers: totalRacersCount,
+      countdownNumber: null
+    });
 
     // Record results to Supabase
     const { profile, selectedTrack, selectedKart, raceMode } = useGameStore.getState();
@@ -159,7 +170,7 @@ export class RaceManager {
       finishTime: finalTime,
       bestLapTime: bestLap,
       position: finalRank,
-      totalRacers: this.ranks.length
+      totalRacers: totalRacersCount
     }).catch(err => {
       console.warn('Failed to upload race result to Supabase:', err);
     });

@@ -180,3 +180,8 @@ export const useGameStore = create<GameState>((set) => ({
   setRoomPlayers: (players) => set({ roomPlayers: players }),
   setSettings: (settings) => set((state) => ({ ...state, ...settings }))
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).__gameStore = useGameStore;
+  (window as any).__useGameStore = useGameStore;
+}

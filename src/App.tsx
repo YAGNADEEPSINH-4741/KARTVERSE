@@ -15,6 +15,7 @@ import { SettingsModal } from './ui/SettingsModal';
 import { RaceHUD } from './ui/RaceHUD';
 import { RaceResultsModal } from './ui/RaceResultsModal';
 import { audio } from './audio/AudioManager';
+import { socketManager } from './multiplayer/SocketManager';
 
 export const App: React.FC = () => {
   const currentScreen = useGameStore(state => state.currentScreen);
@@ -49,6 +50,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (canvasContainerRef.current && !engineRef.current) {
       engineRef.current = new GameEngine(canvasContainerRef.current);
+      (window as any).__gameEngine = engineRef.current;
     }
 
     return () => {
@@ -78,6 +80,18 @@ export const App: React.FC = () => {
     }
   }, [isRacingScreen, currentScreen, selectedKart, kartColor, selectedTrack]);
 
+  // Clean departure on window/tab close or navigate away
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const raceMode = useGameStore.getState().raceMode;
+      if (raceMode === 'MULTIPLAYER') {
+        socketManager.leaveRace('WINDOW_CLOSED');
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   const handleRestartRace = () => {
     if (engineRef.current) {
       engineRef.current.initRaceSession();
@@ -86,6 +100,10 @@ export const App: React.FC = () => {
 
   const handleExitToMenu = () => {
     audio.playMenuClick();
+    const raceMode = useGameStore.getState().raceMode;
+    if (raceMode === 'MULTIPLAYER') {
+      socketManager.leaveRace('USER_EXIT');
+    }
     if (engineRef.current) {
       engineRef.current.initShowroomSession();
     }
