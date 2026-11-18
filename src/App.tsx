@@ -101,15 +101,7 @@ export const App: React.FC = () => {
       {/* In-Race HUD & Results Overlay */}
       {isRacingScreen && (
         <div className="absolute inset-0 z-10 pointer-events-none">
-          <RaceHUD />
-
-          {/* Exit / Pause Button */}
-          <button
-            onClick={handleExitToMenu}
-            className="absolute top-6 left-1/2 -translate-x-1/2 -ml-28 px-4 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-black uppercase text-slate-300 hover:text-white transition-all cursor-pointer pointer-events-auto shadow-lg"
-          >
-            ← EXIT RACE
-          </button>
+          <RaceHUD onExit={handleExitToMenu} />
 
           {raceStatus === 'FINISHED' && (
             <div className="pointer-events-auto">
