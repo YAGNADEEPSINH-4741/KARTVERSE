@@ -234,11 +234,13 @@ export const MultiplayerLobby: React.FC = () => {
                   </div>
 
                   <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                    player.isReady 
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
-                      : 'bg-blue-900/60 text-sky-400 border border-blue-800'
+                    player.isHost
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
+                      : player.isReady 
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
+                        : 'bg-blue-900/60 text-sky-400 border border-blue-800'
                   }`}>
-                    {player.isReady ? 'READY' : 'WAITING'}
+                    {player.isHost ? 'HOST' : (player.isReady ? 'READY' : 'WAITING')}
                   </div>
                 </div>
               ))}
@@ -320,17 +322,21 @@ export const MultiplayerLobby: React.FC = () => {
               </button>
 
               <div className="flex items-center gap-3">
-                <button
-                  onClick={handleToggleReady}
-                  className={`px-6 py-3 rounded-xl font-black italic tracking-wider text-sm uppercase transition-all cursor-pointer ${
-                    isReady
-                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]'
-                  }`}
-                >
-                  {isReady ? 'UNREADY' : 'SET READY'}
-                </button>
+                {/* Non-Host Players: Toggle Ready Status */}
+                {!isHost && (
+                  <button
+                    onClick={handleToggleReady}
+                    className={`px-6 py-3 rounded-xl font-black italic tracking-wider text-sm uppercase transition-all cursor-pointer ${
+                      isReady
+                        ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-[0_0_20px_rgba(217,119,6,0.4)]'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]'
+                    }`}
+                  >
+                    {isReady ? 'UNREADY' : 'SET READY'}
+                  </button>
+                )}
 
+                {/* Host: Sole Authority to Launch Race */}
                 {isHost && (
                   <button
                     onClick={handleStartRace}

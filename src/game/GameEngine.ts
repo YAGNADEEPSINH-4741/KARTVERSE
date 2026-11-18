@@ -384,29 +384,6 @@ export class GameEngine {
         this.lapManager.registerRacer(player.id, player.username || `Racer ${idx + 2}`);
       });
 
-      // If room has fewer than 8 racers, fill remaining slots with AI racers so race is always full
-      const startingAISlot = remoteRoomPlayers.length + 1;
-      if (startingAISlot < 8) {
-        const racingPath = new RacingPath(this.trackManager.curve, this.trackManager.config.roadWidth);
-        for (let i = startingAISlot; i < 8; i++) {
-          const slot = grid[i];
-          const profile = AI_ROSTER[i - 1];
-          const ai = new AIRacer(
-            this.scene,
-            profile,
-            racingPath,
-            store.aiDifficulty,
-            slot.position,
-            slot.rotationY
-          );
-          ai.physics.roadElevation = this.trackManager.getRoadHeightAt(slot.position);
-          ai.physics.position.y = ai.physics.roadElevation + 0.25;
-
-          this.lapManager.registerRacer(ai.profile.id, ai.profile.name);
-          this.aiRacers.push(ai);
-        }
-      }
-
       socketManager.onRemoteTelemetry = (packet) => {
         this.networkSync.handleTelemetry(packet);
       };
