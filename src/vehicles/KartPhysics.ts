@@ -245,6 +245,16 @@ export class KartPhysics {
   // --------------------------------------------------------------------------
   public applyTrackConstraint(constraint: TrackConstraintResult, delta: number, visual?: KartVisual): void {
     this.roadElevation = constraint.roadElevation;
+    const alignment = Math.sin(this.rotationY) * constraint.tangent.x + Math.cos(this.rotationY) * constraint.tangent.z;
+    this.pitch = -Math.atan2(constraint.tangent.y * alignment, Math.hypot(constraint.tangent.x, constraint.tangent.z));
+    if (!constraint.isOutOfBounds) {
+      this.position.y = constraint.roadElevation + .2;
+      if (visual) {
+        visual.root.position.copy(this.position);
+        visual.root.rotation.order = 'YXZ';
+        visual.root.rotation.x = this.pitch;
+      }
+    }
 
     // 1. Off-track / Rescue check: if somehow ejected or way below road
     if (constraint.isOutOfBounds) {
@@ -272,7 +282,8 @@ export class KartPhysics {
 
       // Realign kart gently with track tangent so it bounces smoothly along the barrier
       const trackYaw = Math.atan2(constraint.tangent.x, constraint.tangent.z);
-      this.rotationY = THREE.MathUtils.lerp(this.rotationY, trackYaw, Math.min(1.0, delta * 6.0));
+      const turn = THREE.MathUtils.euclideanModulo(trackYaw - this.rotationY + Math.PI, 2 * Math.PI) - Math.PI;
+      this.rotationY += turn * Math.min(1.0, delta * 6.0);
 
       audio.playCollision();
       return;

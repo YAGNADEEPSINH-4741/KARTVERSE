@@ -1,6 +1,17 @@
 # KARTVERSE — Asset Manifest & Open-Source Licenses
 
-All procedural geometries, textures, audio synthesizers, and shaders in **KARTVERSE** are engineered for 0-byte external network overhead, maximum WebGL performance, and clean open-source compliance.
+KartVerse builds the racing world and playable vehicles from local Three.js geometry. The website serves its art and fonts from the application bundle.
+
+## Sunset Island release assets
+
+| Shipped file | Provenance |
+|---|---|
+| `public/assets/images/sunset-island-hero.webp` | Original KartVerse promotional illustration, created with the built-in OpenAI image generation tool. The brief specified a low front three-quarter view of an orange open-wheel kart with vented side pods and a rear wing, a red-suited driver, a coastal bridge, turquoise water and a shaded left foreground for the page title. The input was text only. |
+| `public/assets/karts/*.webp` | Six transparent Three.js studio captures of the six playable body kits in `src/vehicles/KartModels.ts`. Geometry, paint, driver and wheel details come from the game factory. The studio lighting uses the Three.js MIT-licensed procedural RoomEnvironment. |
+| `public/assets/circuits/*.webp` | Five scene captures from KartVerse's own TrackManager. The Sunset Island capture frames the cable crossing, upper road and lagoon. |
+| `public/assets/fonts/*.woff2` | Locally served Rajdhani, Inter and Oxanium fonts distributed under the SIL Open Font License 1.1. The corresponding copyright and license notices are bundled beside the font files. [Rajdhani notice](public/assets/fonts/Rajdhani-OFL.txt) · [Inter notice](public/assets/fonts/Inter-OFL.txt) · [Oxanium notice](public/assets/fonts/Oxanium-OFL.txt) |
+
+The asset study reviewed terrain materials, road props and tropical vegetation from public catalogs. The new artwork and course use project-specific meshes and materials. The selected examples and their terms are recorded in the [reference study](docs/REFERENCE-STUDY.md).
 
 ---
 
@@ -14,7 +25,7 @@ All procedural geometries, textures, audio synthesizers, and shaders in **KARTVE
 | **Quantum Leap 3D Model**  | Procedural Three.js Parametric Mesh | MIT (Original) | Procedural BufferGeometry | ~2 KB (Code) | High-tech hypercar prototype |
 | **Hyper Drift 3D Model**   | Procedural Three.js Parametric Mesh | MIT (Original) | Procedural BufferGeometry | ~2 KB (Code) | JDM drift roadster chassis |
 | **Shadow Phantom 3D Model**| Procedural Three.js Parametric Mesh | MIT (Original) | Procedural BufferGeometry | ~2 KB (Code) | Stealth all-round interceptor |
-| **Sunset Coast Circuit**   | CatmullRomCurve3 Ribbon Extrusion  | CC0 (Original) | Procedural Spline Mesh | ~4 KB (Code) | Tropical beach circuit with ocean jumps |
+| **Sunset Island Circuit**  | KartVerse course, terrain, water, bridge and tunnel meshes | Original project geometry | Procedural spline and instanced scenery | Generated at runtime | Harbor start, rising headland corners and cable-stayed crossing |
 | **Neon City Circuit**      | CatmullRomCurve3 Ribbon Extrusion  | CC0 (Original) | Procedural Spline Mesh | ~4 KB (Code) | Cyberpunk city with illuminated skyscrapers |
 | **Mystic Forest Circuit**  | CatmullRomCurve3 Ribbon Extrusion  | CC0 (Original) | Procedural Spline Mesh | ~4 KB (Code) | Forest circuit with giant flora |
 | **Volcano Rush Circuit**   | CatmullRomCurve3 Ribbon Extrusion  | CC0 (Original) | Procedural Spline Mesh | ~4 KB (Code) | Magma chasm circuit with basalt rocks |

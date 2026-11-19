@@ -1,231 +1,242 @@
-// ============================================================================
-// KARTVERSE — Master Arcade Home Page Screen
-// Ultra-Responsive, Non-Overlapping AAA Glassmorphic Interface
-// Faithful Recreation of the Official AAA Kartverse Mockup
-// ============================================================================
-
+import { useGameStore } from '../store/gameStore';
 import React, { useState } from 'react';
-import { useGameStore, ScreenState, GameRaceMode } from '../store/gameStore';
-import { audio } from '../audio/AudioManager';
-import { ProfileModal } from './ProfileModal';
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Flag,
+  Keyboard,
+  MapPin,
+  Play,
+  Timer,
+  Trophy,
+  Users,
+} from 'lucide-react';
+import { TRACKS } from '../tracks/TrackData';
+import {
+  Brand,
+  CourseListLink,
+  Header,
+  Modal,
+  navigate,
+  RouteMap,
+  startRace,
+} from './Interface';
 
-export const MainMenu: React.FC = () => {
-  const setScreen = useGameStore(state => state.setScreen);
-  const setRaceMode = useGameStore(state => state.setRaceMode);
-  const profile = useGameStore(state => state.profile);
-
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-
-  const startSinglePlayer = (mode: GameRaceMode) => {
-    audio.playMenuClick();
-    setRaceMode(mode);
-    setScreen('QUICK_RACE');
-  };
-
-  const navTo = (screen: ScreenState) => {
-    audio.playMenuClick();
-    setScreen(screen);
-  };
-
+const featured = TRACKS.sunset_coast;
+const modes = [
+  {
+    name: 'Quick race',
+    tag: 'SINGLE PLAYER',
+    detail: 'Take on seven AI rivals.',
+    icon: Flag,
+    kart: 'speed_demon',
+    tone: 'orange',
+    run: () => startRace('QUICK_RACE'),
+  },
+  {
+    name: 'Multiplayer',
+    tag: 'ONLINE RACING',
+    detail: 'Host or join a private grid.',
+    icon: Users,
+    kart: 'cyber_glider',
+    tone: 'blue',
+    run: () => navigate('MULTIPLAYER_LOBBY'),
+  },
+  {
+    name: 'Time trial',
+    tag: 'SOLO CHALLENGE',
+    detail: 'Chase your fastest lap.',
+    icon: Timer,
+    kart: 'shadow_phantom',
+    tone: 'mint',
+    run: () => startRace('TIME_TRIAL'),
+  },
+  {
+    name: 'Grand Prix',
+    tag: 'CHAMPIONSHIP',
+    detail: 'Race the five-circuit tour.',
+    icon: Trophy,
+    kart: 'quantum_leap',
+    tone: 'violet',
+    run: () => startRace('GRAND_PRIX', Object.keys(TRACKS)[0]),
+  },
+];
+const keys = [
+  ['W / ↑', 'Accelerate'],
+  ['A D / ← →', 'Steer'],
+  ['S / ↓', 'Brake and reverse'],
+  ['Shift', 'Drift'],
+  ['N / F', 'Nitro'],
+  ['E / Space', 'Use item'],
+  ['R', 'Return to track'],
+];
+export const MainMenu = () => {
+  const [controls, setControls] = useState(false);
   return (
-    <div 
-      className="relative w-full h-full flex flex-col justify-between p-4 sm:p-6 md:p-8 lg:p-10 select-none overflow-hidden bg-cover bg-center bg-no-repeat font-sans"
-      style={{ backgroundImage: 'url(/assets/images/home_bg.jpg)' }}
-    >
-      {/* Subtle atmospheric vignette gradient overlay for text readability without obscuring artwork */}
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/40 to-transparent pointer-events-none z-0" />
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-transparent to-slate-950/30 pointer-events-none z-0" />
-
-      {/* ==================================================================== */}
-      {/* 1. TOP HEADER BAR: BRAND LOGO (Left) & RACER PROFILE (Right)          */}
-      {/* ==================================================================== */}
-      <div className="relative z-10 w-full flex items-center justify-between flex-shrink-0">
-        
-        {/* Brand Header */}
-        <div className="flex items-center gap-3 sm:gap-3.5">
-          <div className="w-11 h-11 sm:w-13 sm:h-13 md:w-14 md:h-14 rounded-2xl bg-gradient-to-tr from-pink-500 via-fuchsia-500 to-cyan-400 flex items-center justify-center font-black text-white text-2xl sm:text-3xl shadow-[0_0_25px_rgba(0,240,255,0.7)] border border-white/30 flex-shrink-0">
-            K
-          </div>
-          <div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-cyan-400 drop-shadow-[0_4px_18px_rgba(0,240,255,0.7)] leading-none">
-              KARTVERSE
+    <div className="page scroll-page">
+      <Header />
+      <main className="content hub">
+        <section className="feature-poster" aria-labelledby="feature-heading">
+          <img
+            className="poster-image"
+            src="/assets/images/sunset-island-hero.webp"
+            alt="An orange open-wheel kart sweeps past the island coast at sunset"
+            fetchPriority="high"
+          />
+          <div className="poster-shade" />
+          <div className="poster-content">
+            <div className="feature-label">
+              <span className="lane-stripes" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>{' '}
+              Featured circuit
+            </div>
+            <h1 id="feature-heading">
+              <span>Sunset</span>
+              <span>Island Circuit</span>
             </h1>
-            <p className="text-[9px] sm:text-[10px] md:text-xs uppercase font-extrabold tracking-[0.35em] text-cyan-400 mt-1">
-              RACE BEYOND LIMITS
+            <p>
+              Carve through coastal hairpins, hit the boost and race the last
+              light across the island.
             </p>
-          </div>
-        </div>
-
-        {/* Top-Right User Identity Pill with Live Supabase Sync */}
-        <button
-          onClick={() => {
-            audio.playMenuClick();
-            setIsProfileModalOpen(true);
-          }}
-          title="Click to edit racer name & cloud profile in Supabase"
-          className="group relative flex items-center gap-2.5 sm:gap-3 bg-slate-900/85 hover:bg-slate-800/95 backdrop-blur-xl border-2 border-fuchsia-500/80 hover:border-cyan-400 px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl shadow-[0_0_25px_rgba(168,85,247,0.4)] hover:shadow-[0_0_35px_rgba(0,240,255,0.7)] transition-all duration-200 cursor-pointer text-left active:scale-95"
-        >
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-fuchsia-600 to-pink-500 flex items-center justify-center text-lg sm:text-xl shadow-md group-hover:scale-105 transition-transform flex-shrink-0">
-            🏎️
-          </div>
-          <div className="overflow-hidden">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs sm:text-sm font-black text-white tracking-wide group-hover:text-cyan-300 transition-colors truncate max-w-[110px] sm:max-w-[150px]">
-                {profile.username}
-              </span>
-              <span className="text-[10px] sm:text-xs text-slate-400 group-hover:text-white transition-colors flex-shrink-0" title="Edit name">
-                ✏️
-              </span>
+            <div className="action-row">
+              <button
+                className="btn primary"
+                onClick={() => startRace('QUICK_RACE', featured.id)}
+              >
+                <Play size={16} fill="currentColor" /> Play now
+              </button>
+              <button
+                className="btn secondary"
+                onClick={() => navigate('MULTIPLAYER_LOBBY')}
+              >
+                <Users size={18} /> Multiplayer
+              </button>
             </div>
-            <div className="text-[10px] sm:text-[11px] font-extrabold flex items-center gap-1.5 mt-0.5">
-              <span className="px-1.5 py-0.2 rounded bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 font-black text-[9px] sm:text-[10px]">
-                LVL {profile.level}
+          </div>
+          <div className="poster-foot">
+            <div className="poster-meta">
+              <span>
+                <MapPin /> Tropical coast
               </span>
-              <span className="text-slate-500">•</span>
-              <span className="text-cyan-300 font-mono text-[10px] sm:text-[11px]">
-                {profile.xp} XP
+              <i />
+              <span>
+                <Flag /> {featured.laps} laps
               </span>
             </div>
+            <button onClick={() => navigate('TRACK_SELECT')}>
+              Circuit guide <ArrowUpRight size={15} />
+            </button>
           </div>
-        </button>
-      </div>
-
-      {/* ==================================================================== */}
-      {/* 2. MAIN RACE MODE COMMAND CARDS (Floating Left Stack)               */}
-      {/* ==================================================================== */}
-      <div className="relative z-10 w-full max-w-[420px] sm:max-w-[480px] md:max-w-[520px] lg:max-w-[560px] my-auto py-2 sm:py-4 space-y-3 sm:space-y-3.5">
-        
-        {/* Card 1: QUICK RACE */}
-        <button
-          onClick={() => startSinglePlayer('QUICK_RACE')}
-          className="group relative w-full flex items-center justify-between p-3.5 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl bg-slate-950/75 hover:bg-slate-900/90 backdrop-blur-xl border-2 border-cyan-400 shadow-[0_0_25px_rgba(0,240,255,0.35)] hover:shadow-[0_0_40px_rgba(0,240,255,0.75)] transition-all duration-200 text-left cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.99]"
-        >
-          <div className="pr-2">
-            <div className="text-[10px] sm:text-[11px] uppercase font-black tracking-widest text-cyan-400">
-              ARCADE SOLO
-            </div>
-            <div className="text-xl sm:text-2xl md:text-3xl font-black italic text-white group-hover:text-cyan-200 transition-colors mt-0.5 tracking-tight">
-              QUICK RACE
-            </div>
-            <p className="text-[11px] sm:text-xs text-slate-300 font-medium mt-0.5 sm:mt-1 line-clamp-1 sm:line-clamp-none">
-              Jump straight into an 8-kart battle against adaptive AI
-            </p>
+        </section>
+        <section className="mode-section">
+          <div className="section-heading">
+            <h2>
+              <i />
+              Race modes
+            </h2>
+            <button className="text-link" onClick={() => setControls(true)}>
+              <Keyboard size={17} /> How to play
+            </button>
           </div>
-          <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-2xl sm:text-3xl group-hover:scale-110 transition-transform shadow-inner flex-shrink-0 ml-2">
-            🏁
+          <div className="mode-grid">
+            {modes.map(({ name, tag, detail, icon: Icon, kart, tone, run }) => (
+              <button key={name} className={'mode-card ' + tone} onClick={run}>
+                <span className="mode-art">
+                  <img
+                    loading="lazy"
+                    src={'/assets/karts/' + kart + '.webp'}
+                    alt=""
+                  />
+                </span>
+                <span className="mode-tag">
+                  <Icon size={14} />
+                  {tag}
+                </span>
+                <strong>{name}</strong>
+                <span className="mode-copy">{detail}</span>
+                <ArrowUpRight className="mode-arrow" size={15} />
+              </button>
+            ))}
           </div>
-        </button>
-
-        {/* Card 2: MULTIPLAYER */}
-        <button
-          onClick={() => navTo('MULTIPLAYER_LOBBY')}
-          className="group relative w-full flex items-center justify-between p-3.5 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl bg-slate-950/75 hover:bg-slate-900/90 backdrop-blur-xl border-2 border-fuchsia-500 shadow-[0_0_25px_rgba(217,70,239,0.35)] hover:shadow-[0_0_40px_rgba(217,70,239,0.75)] transition-all duration-200 text-left cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.99]"
-        >
-          <div className="pr-2">
-            <div className="text-[10px] sm:text-[11px] uppercase font-black tracking-widest text-fuchsia-400">
-              REAL-TIME ONLINE
-            </div>
-            <div className="text-xl sm:text-2xl md:text-3xl font-black italic text-white group-hover:text-fuchsia-200 transition-colors mt-0.5 tracking-tight">
-              MULTIPLAYER
-            </div>
-            <p className="text-[11px] sm:text-xs text-slate-300 font-medium mt-0.5 sm:mt-1 line-clamp-1 sm:line-clamp-none">
-              Host or join 6-char rooms with friends (2-8 racers)
-            </p>
+        </section>
+        <section className="track-showcase">
+          <div className="section-heading">
+            <h2>
+              <i />
+              Circuit selection
+            </h2>
+            <CourseListLink />
           </div>
-          <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-cyan-500/10 border border-cyan-400/40 flex items-center justify-center text-2xl sm:text-3xl text-cyan-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(0,240,255,0.4)] flex-shrink-0 ml-2">
-            🌐
+          <div className="preview-grid">
+            {Object.values(TRACKS)
+              .slice(0, 3)
+              .map((track) => (
+                <button
+                  key={track.id}
+                  className={'track-preview biome-' + track.theme}
+                  onClick={() => {
+                    selectTrack(track.id);
+                  }}
+                >
+                  <img
+                    src={'/assets/circuits/' + track.id + '.webp'}
+                    alt=""
+                    loading="lazy"
+                  />
+                  <div className="track-overlay" />
+                  <div>
+                    <small>
+                      {track.difficulty} · {track.laps} LAPS
+                    </small>
+                    <strong>{track.name}</strong>
+                  </div>
+                  <RouteMap track={track} />
+                </button>
+              ))}
           </div>
-        </button>
-
-        {/* Split Row: GRAND PRIX & TIME TRIAL */}
-        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 w-full">
-          {/* Card 3A: GRAND PRIX */}
-          <button
-            onClick={() => startSinglePlayer('GRAND_PRIX')}
-            className="group relative flex flex-col justify-between p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-slate-950/75 hover:bg-slate-900/90 backdrop-blur-xl border-2 border-yellow-500/60 hover:border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.2)] hover:shadow-[0_0_30px_rgba(250,204,21,0.5)] transition-all text-left cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.99]"
+        </section>
+        <footer>
+          <Brand />
+          <button onClick={() => setControls(true)}>Controls</button>
+          <button onClick={() => navigate('SETTINGS')}>Settings</button>
+          <a
+            href="https://github.com/YAGNADEEPSINH-4741/KARTVERSE"
+            target="_blank"
+            rel="noreferrer"
           >
-            <div className="flex justify-between items-start">
-              <span className="text-[9px] sm:text-[10px] uppercase font-black tracking-wider text-yellow-400">
-                TOURNAMENT
-              </span>
-              <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">🏆</span>
-            </div>
-            <div className="mt-1.5 sm:mt-2">
-              <div className="text-base sm:text-lg font-black italic text-white group-hover:text-yellow-300 transition-colors">
-                GRAND PRIX
+            GitHub <ArrowUpRight size={13} />
+          </a>
+        </footer>
+      </main>
+      {controls && (
+        <Modal title="How to play" onClose={() => setControls(false)}>
+          <p>
+            Pass each checkpoint in order and cross the finish line after three
+            laps. Drive through item boxes for a power-up.
+          </p>
+          <dl className="controls-list">
+            {keys.map(([key, action]) => (
+              <div key={key}>
+                <dt>{action}</dt>
+                <dd>
+                  <kbd>{key}</kbd>
+                </dd>
               </div>
-              <p className="text-[10px] text-slate-300 mt-0.5">5-Track Cup</p>
-            </div>
-          </button>
-
-          {/* Card 3B: TIME TRIAL */}
-          <button
-            onClick={() => startSinglePlayer('TIME_TRIAL')}
-            className="group relative flex flex-col justify-between p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-slate-950/75 hover:bg-slate-900/90 backdrop-blur-xl border-2 border-cyan-500/60 hover:border-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.2)] hover:shadow-[0_0_30px_rgba(0,240,255,0.5)] transition-all text-left cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.99]"
-          >
-            <div className="flex justify-between items-start">
-              <span className="text-[9px] sm:text-[10px] uppercase font-black tracking-wider text-cyan-400">
-                SOLO RECORD
-              </span>
-              <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">⏱️</span>
-            </div>
-            <div className="mt-1.5 sm:mt-2">
-              <div className="text-base sm:text-lg font-black italic text-white group-hover:text-cyan-300 transition-colors">
-                TIME TRIAL
-              </div>
-              <p className="text-[10px] text-slate-300 mt-0.5">Beat the Clock</p>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      {/* ==================================================================== */}
-      {/* 3. BOTTOM UTILITY BAR: NAV PILLS (Left) & SETTINGS PILL (Right)     */}
-      {/* ==================================================================== */}
-      <div className="relative z-10 w-full flex flex-wrap items-center justify-between gap-3 pt-2 flex-shrink-0">
-        
-        {/* Left Utility Cluster: Garage, Circuits, Leaderboard */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => navTo('GARAGE')}
-            className="py-2 sm:py-2.5 px-3 sm:px-4 rounded-2xl bg-slate-950/80 hover:bg-cyan-500 hover:text-slate-950 text-white font-black italic text-xs sm:text-sm tracking-wider uppercase border-2 border-cyan-400 shadow-[0_0_18px_rgba(0,240,255,0.3)] transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer active:scale-95 backdrop-blur-xl"
-          >
-            <span>🔧</span>
-            <span>GARAGE & TUNING</span>
-          </button>
-
-          <button
-            onClick={() => navTo('TRACK_SELECT')}
-            className="py-2 sm:py-2.5 px-3 sm:px-4 rounded-2xl bg-slate-950/80 hover:bg-fuchsia-500 hover:text-white text-white font-black italic text-xs sm:text-sm tracking-wider uppercase border-2 border-fuchsia-500 shadow-[0_0_18px_rgba(217,70,239,0.3)] transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer active:scale-95 backdrop-blur-xl"
-          >
-            <span>📖</span>
-            <span>CIRCUITS</span>
-          </button>
-
-          <button
-            onClick={() => navTo('LEADERBOARD')}
-            className="py-2 sm:py-2.5 px-3 sm:px-4 rounded-2xl bg-slate-950/80 hover:bg-yellow-400 hover:text-slate-950 text-white font-black italic text-xs sm:text-sm tracking-wider uppercase border-2 border-yellow-400 shadow-[0_0_18px_rgba(250,204,21,0.3)] transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer active:scale-95 backdrop-blur-xl"
-          >
-            <span>🏆</span>
-            <span>LEADERBOARD</span>
-          </button>
-        </div>
-
-        {/* Right Utility: Settings Pill */}
-        <button
-          onClick={() => navTo('SETTINGS')}
-          className="py-2 sm:py-2.5 px-4 sm:px-5 rounded-2xl bg-slate-950/80 hover:bg-slate-800 text-white font-black italic text-xs sm:text-sm uppercase tracking-wider border-2 border-slate-600 hover:border-cyan-400 shadow-[0_0_18px_rgba(0,0,0,0.5)] transition-all flex items-center gap-2 cursor-pointer active:scale-95 backdrop-blur-xl"
-        >
-          <span>⚙️</span>
-          <span>SETTINGS</span>
-        </button>
-      </div>
-
-      {/* Supabase Racer Profile Modal */}
-      <ProfileModal 
-        isOpen={isProfileModalOpen} 
-        onClose={() => setIsProfileModalOpen(false)} 
-      />
+            ))}
+          </dl>
+          <p>
+            On touchscreens, steer with your left thumb and use the pedals on
+            the right. Hold drift through a turn and release for a mini-turbo.
+          </p>
+        </Modal>
+      )}
     </div>
   );
 };
+function selectTrack(id: string) {
+  useGameStore.getState().setSelectedTrack(id);
+  navigate('TRACK_SELECT');
+}

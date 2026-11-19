@@ -30,7 +30,7 @@
   - Press `N` or `F` for immediate +160% forward thrust, +48% top speed, camera FOV kick (+8°), radial speed lines, and twin exhaust thruster flames.
 
 - **🏝️ 5 Handcrafted Circuits & Procedural Splines**:
-  - **Sunset Paradise** (Tropical island, waterfalls, lighthouse with rotating 3D beacon, mountain tunnel cavern, wooden ocean bridge, floating sky island).
+  - **Sunset Island Circuit** (Harbor straight, coastal esses, headland hairpin, cliff tunnel and cable-stayed crossing).
   - **Neon Cyber City** (Futuristic metropolis with elevated expressways and glowing skyscrapers).
   - **Mystic Forest** (Ancient bioluminescent canopy with glowing mushroom groves).
   - **Volcano Rush** (Infernal volcanic caldera, basalt pillars, and magma rivers).
@@ -41,7 +41,7 @@
   - Zero solid mountain, rock, or tree penetrations on the racing asphalt.
   - Wide arched stone mountain tunnel ($25\text{m}$ span, $12\text{m}$ height) with neon guide rails.
 
-- **🌐 Authoritative Real-Time Multiplayer (2–8 Racers)**:
+- **🌐 Real-Time Multiplayer (2–8 Racers)**:
   - Private 6-character room codes (e.g. `KV89RT`).
   - Interactive Host Track Card Selection with live real-time sync to all lobby participants.
   - 20Hz UDP-style telemetry synchronization (position, rotation, drift tier, and item events).
@@ -52,7 +52,7 @@
 
 - **☁️ Supabase Cloud Integration**:
   - Persistent user profiles, level progression, and runtime racer name updates.
-  - Global circuit leaderboards and lap records.
+  - Cloud circuit leaderboards where Supabase grants access, plus recorded finishes on this device.
 
 ---
 
@@ -102,9 +102,15 @@
    ```
 
 5. **Open in Browser**:
-   Navigate to `http://localhost:3000`.
+   Navigate to `http://localhost:3000`. Set `VITE_SERVER_URL` to use a Socket.IO server. Leave it empty to use Supabase Realtime.
 
 ---
+
+## Design and reference study
+
+- [Art direction and component system](docs/ART-DIRECTION.md)
+- [Technical and visual references](docs/REFERENCE-STUDY.md)
+- [Asset provenance and licenses](ASSET_LICENSES.md)
 
 ## 🧪 Testing Suite
 

@@ -10,9 +10,9 @@
 // ============================================================================
 
 import * as THREE from 'three';
-import { TrackConfig, TRACKS } from './TrackData';
+import { buildSunsetIsland } from './SunsetIsland';
+import { createTrackCurve, TrackConfig, TRACKS } from './TrackData';
 import { audio } from '../audio/AudioManager';
-import { TrackValidator, ClearanceViolation } from './TrackValidator';
 
 export interface CheckpointGate {
   index: number;
@@ -73,11 +73,13 @@ export class TrackManager {
   public boostPads: BoostPad[] = [];
   public splineSamples: TrackSample[] = [];
   public coins: CollectibleCoin[] = [];
+  private startLights: THREE.MeshBasicMaterial[] = [];
   public clouds: THREE.Group[] = [];
   public animatedProps: { mesh: THREE.Object3D; update: (delta: number) => void }[] = [];
 
   private oceanBaseVertices: Float32Array | null = null;
   private oceanTime = 0;
+  private island?: ReturnType<typeof buildSunsetIsland>;
 
   constructor(scene: THREE.Scene, trackId = 'sunset_coast') {
     this.scene = scene;
@@ -86,16 +88,23 @@ export class TrackManager {
     this.scene.add(this.trackGroup);
 
     // Create closed 3D Catmull-Rom spline
-    this.curve = new THREE.CatmullRomCurve3(this.config.points, true, 'centripetal');
+    this.curve = createTrackCurve(this.config);
 
     // Precalculate dense spline samples for collision and clamping
-    this.generateSplineSamples(400);
+    this.generateSplineSamples(512);
 
     // 1. Build Atmosphere & World Sky
-    this.buildSkyDome();
-    this.buildGroundSurface();
-    this.buildDistantHorizon();
-    this.buildClouds();
+    if (this.config.theme === 'BEACH') {
+      this.island = buildSunsetIsland(this.trackGroup, this.curve, this.config);
+      this.skyDome = this.island.sky;
+      this.oceanMesh = this.island.ocean;
+    } else {
+      this.buildSkyDome();
+      this.buildGroundSurface();
+      this.buildDistantHorizon();
+      this.buildClouds();
+      this.buildThemedScenery();
+    }
 
     // 2. Build Circuit Geometry
     this.buildRoadMesh();
@@ -105,11 +114,7 @@ export class TrackManager {
     this.buildCollectibleCoins();
     this.buildStartFinishGantry();
 
-    // 3. Build Unique Themed Environmental Scenery (BEACH, CYBER, FOREST, LAVA, ICE)
-    this.buildThemedScenery();
 
-    // 4. Strict Track Corridor Clearance Validation
-    this.validateTrackClearance();
   }
 
   private generateSplineSamples(sampleCount: number): void {
@@ -249,34 +254,7 @@ export class TrackManager {
   private buildGroundSurface(): void {
     const theme = this.config.theme;
 
-    if (theme === 'BEACH') {
-      // Dynamic Turquoise Ocean with Live Waves
-      const oceanGeom = new THREE.PlaneGeometry(3600, 3600, 64, 64);
-      oceanGeom.rotateX(-Math.PI / 2);
-      this.oceanBaseVertices = new Float32Array(oceanGeom.attributes.position.array);
-
-      const oceanMat = new THREE.MeshStandardMaterial({
-        color: 0x0ea5e9,
-        roughness: 0.12,
-        metalness: 0.4,
-        transparent: true,
-        opacity: 0.92
-      });
-      this.oceanMesh = new THREE.Mesh(oceanGeom, oceanMat);
-      this.oceanMesh.position.y = -1.2;
-      this.oceanMesh.receiveShadow = true;
-      this.trackGroup.add(this.oceanMesh);
-
-      // Golden sandy shore seabed
-      const sand = new THREE.Mesh(
-        new THREE.PlaneGeometry(2800, 2800, 16, 16).rotateX(-Math.PI / 2),
-        new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.95 })
-      );
-      sand.position.y = -1.5;
-      sand.receiveShadow = true;
-      this.trackGroup.add(sand);
-
-    } else if (theme === 'CYBER') {
+    if (theme === 'CYBER') {
       // Wet reflective cyber-asphalt plaza with cyan grid lines
       const cyberPlaza = new THREE.Mesh(
         new THREE.PlaneGeometry(3200, 3200, 32, 32).rotateX(-Math.PI / 2),
@@ -353,33 +331,7 @@ export class TrackManager {
       const peakGroup = new THREE.Group();
       peakGroup.position.set(x, 0, z);
 
-      if (theme === 'BEACH') {
-        // Lush Tropical Volcanic Islands on distant horizon (Hawaiian style)
-        // Sandy beach base ring at waterline
-        const beachBase = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius * 1.05, radius * 1.15, 6, 12),
-          new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.95 })
-        );
-        beachBase.position.y = 3;
-        peakGroup.add(beachBase);
-
-        // Coastal warm sandstone/limestone cliff
-        const cliff = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius * 0.7, radius * 1.0, height * 0.45, 10),
-          new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.9 })
-        );
-        cliff.position.y = height * 0.22;
-        peakGroup.add(cliff);
-
-        // Lush Rainforest Jungle Peak Mantle
-        const junglePeak = new THREE.Mesh(
-          new THREE.ConeGeometry(radius * 0.75, height * 0.7, 10),
-          new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85 })
-        );
-        junglePeak.position.y = height * 0.65;
-        peakGroup.add(junglePeak);
-
-      } else if (theme === 'CYBER') {
+      if (theme === 'CYBER') {
         // Distant Mega-Skyscrapers with glowing windows
         const towerW = 45 + (i % 3) * 25;
         const towerH = 180 + (i % 6) * 50;
@@ -480,109 +432,48 @@ export class TrackManager {
   // Perfectly Closed Seamless Circuit Loop with Upward Vertex Normals
   // --------------------------------------------------------------------------
   private buildRoadMesh(): void {
-    const segments = 360;
-    const halfWidth = this.config.roadWidth / 2;
-    const up = new THREE.Vector3(0, 1, 0);
-
-    const vertices: number[] = [];
-    const colors: number[] = [];
+    const half = this.config.roadWidth / 2;
+    const positions: number[] = [], colors: number[] = [], uvs: number[] = [];
     const indices: number[] = [];
-
-    const whiteColor = new THREE.Color(0xf8fafc);
-    const roadColor = this.config.roadColor;
-    const kerbCol1 = this.config.kerbColor1;
-    const kerbCol2 = this.config.kerbColor2;
-
-    const isSunsetCoast = this.config.id === 'sunset_coast';
-    const woodPlankColor = new THREE.Color(0x7c4a22);
-    const woodLineColor = new THREE.Color(0xb45309);
-
-    for (let i = 0; i < segments; i++) {
-      const t = i / segments;
-      const point = this.curve.getPointAt(t);
-      const tangent = this.curve.getTangentAt(t).normalize();
-      const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
-      const isOceanBridge = isSunsetCoast && t >= 0.65 && t <= 0.82;
-
-      // Alternating kerbs
-      const isAltKerb = Math.floor(t * 140) % 2 === 0;
-      const kerbCol = isOceanBridge
-        ? (isAltKerb ? woodLineColor : woodPlankColor)
-        : (isAltKerb ? kerbCol1 : kerbCol2);
-
-      // Center dashed line
-      const isCenterDash = Math.floor(t * 180) % 2 === 0;
-      const currentRoadColor = isOceanBridge ? woodPlankColor : roadColor;
-      const centerLineCol = isCenterDash ? (isOceanBridge ? woodLineColor : whiteColor) : currentRoadColor;
-
-      // 14 cross-section vertices:
-      const p0 = point.clone().addScaledVector(binormal, -halfWidth - 1.2).add(new THREE.Vector3(0, 0.12, 0));
-      const p1 = point.clone().addScaledVector(binormal, -halfWidth).add(new THREE.Vector3(0, 0.04, 0));
-      const p2 = point.clone().addScaledVector(binormal, -halfWidth).add(new THREE.Vector3(0, 0.02, 0));
-      const p3 = point.clone().addScaledVector(binormal, -halfWidth + 0.35).add(new THREE.Vector3(0, 0.02, 0));
-      const p4 = point.clone().addScaledVector(binormal, -halfWidth + 0.36).add(new THREE.Vector3(0, 0.01, 0));
-      const p5 = point.clone().addScaledVector(binormal, -0.22).add(new THREE.Vector3(0, 0.01, 0));
-      const p6 = point.clone().addScaledVector(binormal, -0.20).add(new THREE.Vector3(0, 0.02, 0));
-      const p7 = point.clone().addScaledVector(binormal, 0.20).add(new THREE.Vector3(0, 0.02, 0));
-      const p8 = point.clone().addScaledVector(binormal, 0.22).add(new THREE.Vector3(0, 0.01, 0));
-      const p9 = point.clone().addScaledVector(binormal, halfWidth - 0.36).add(new THREE.Vector3(0, 0.01, 0));
-      const p10 = point.clone().addScaledVector(binormal, halfWidth - 0.35).add(new THREE.Vector3(0, 0.02, 0));
-      const p11 = point.clone().addScaledVector(binormal, halfWidth).add(new THREE.Vector3(0, 0.02, 0));
-      const p12 = point.clone().addScaledVector(binormal, halfWidth).add(new THREE.Vector3(0, 0.04, 0));
-      const p13 = point.clone().addScaledVector(binormal, halfWidth + 1.2).add(new THREE.Vector3(0, 0.12, 0));
-
-      const slicePoints = [p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13];
-      const sliceColors = [
-        kerbCol, kerbCol,
-        whiteColor, whiteColor,
-        currentRoadColor, currentRoadColor,
-        centerLineCol, centerLineCol,
-        currentRoadColor, currentRoadColor,
-        whiteColor, whiteColor,
-        kerbCol, kerbCol
-      ];
-
-      slicePoints.forEach(p => vertices.push(p.x, p.y, p.z));
-      sliceColors.forEach(c => colors.push(c.r, c.g, c.b));
-
-      // Bridge pillars for boardwalk section
-      if (isOceanBridge && i % 6 === 0) {
-        const pillarGeom = new THREE.CylinderGeometry(0.65, 0.75, point.y + 5.0, 10);
-        const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3f2516, roughness: 0.95 });
-        [-halfWidth - 0.6, halfWidth + 0.6].forEach(sideOffset => {
-          const pillar = new THREE.Mesh(pillarGeom, pillarMat);
-          const pillarPos = point.clone().addScaledVector(binormal, sideOffset);
-          pillar.position.set(pillarPos.x, (point.y - 1.5) / 2, pillarPos.z);
-          pillar.castShadow = true;
-          this.trackGroup.add(pillar);
-        });
+    const ivory = new THREE.Color(0xf0e8cf);
+    const road = this.config.roadColor;
+    const slices = [-half - 1.2, -half, -half + .18, -.10, .10, half - .18, half, half + 1.2];
+    for (let i = 0; i < this.splineSamples.length; i++) {
+      const a = this.splineSamples[i];
+      const b = this.splineSamples[(i + 1) % this.splineSamples.length];
+      const kerb = Math.floor(i / 2) % 2 ? this.config.kerbColor1 : this.config.kerbColor2;
+      const stripe = i % 6 < 2 ? ivory : road;
+      const paint = [kerb, ivory, road, stripe, road, ivory, kerb];
+      for (let k = 0; k < paint.length; k++) {
+        const start = positions.length / 3;
+        for (const row of [a, b]) {
+          for (const lateral of [slices[k], slices[k + 1]]) {
+            const p = row.point.clone().addScaledVector(row.binormal, lateral);
+            p.y += Math.abs(lateral) > half ? .09 : .015;
+            positions.push(p.x, p.y, p.z); colors.push(paint[k].r, paint[k].g, paint[k].b);
+            uvs.push(p.x / 3, p.z / 3);
+          }
+        }
+        indices.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
       }
     }
-
-    // Connect segments in a seamless closed circuit
-    for (let i = 0; i < segments; i++) {
-      const baseIdx = i * 14;
-      const nextBase = ((i + 1) % segments) * 14;
-
-      for (let q = 0; q < 13; q++) {
-        indices.push(baseIdx + q, nextBase + q, baseIdx + q + 1);
-        indices.push(baseIdx + q + 1, nextBase + q, nextBase + q + 1);
-      }
-    }
-
     const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geom.setIndex(indices);
-    geom.computeVertexNormals();
-
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.45,
-      metalness: 0.22,
-      side: THREE.DoubleSide
-    });
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices); geom.computeVertexNormals();
+    const grain = new Uint8Array(64 * 64 * 4);
+    for (let i = 0; i < grain.length; i += 4) {
+      const value = 213 + ((Math.imul(i + 1, 2654435761) >>> 16) % 43);
+      grain.set([value, value, value, 255], i);
+    }
+    const aggregate = new THREE.DataTexture(grain, 64, 64);
+    aggregate.wrapS = aggregate.wrapT = THREE.RepeatWrapping;
+    aggregate.generateMipmaps = true;
+    aggregate.minFilter = THREE.LinearMipmapLinearFilter;
+    aggregate.magFilter = THREE.LinearFilter;
+    aggregate.needsUpdate = true;
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, map: aggregate, roughness: .87, metalness: .04 });
 
     this.roadMesh = new THREE.Mesh(geom, mat);
     this.roadMesh.receiveShadow = true;
@@ -593,7 +484,7 @@ export class TrackManager {
   // 6. 3D SOLID CRASH BARRIERS & NEON SAFETY RAILS & CHEVRON ARROWS
   // --------------------------------------------------------------------------
   private buildGuardrails(): void {
-    const segments = 360;
+    const segments = this.splineSamples.length;
     const halfWidth = this.config.roadWidth / 2;
     const up = new THREE.Vector3(0, 1, 0);
 
@@ -602,7 +493,7 @@ export class TrackManager {
     const rightVertices: number[] = [];
     const barrierIndices: number[] = [];
 
-    const barrierHeight = 1.35;
+    const barrierHeight = this.config.theme === 'BEACH' ? .78 : 1.35;
 
     for (let i = 0; i < segments; i++) {
       const t = i / segments;
@@ -661,7 +552,7 @@ export class TrackManager {
     const railColor = this.config.theme === 'CYBER' ? 0x00f0ff :
                       this.config.theme === 'FOREST' ? 0x10b981 :
                       this.config.theme === 'LAVA' ? 0xf59e0b :
-                      this.config.theme === 'ICE' ? 0x38bdf8 : 0x0284c7; // Monaco Racing Blue
+                      this.config.theme === 'ICE' ? 0x38bdf8 : 0xf0d2a4; // Monaco Racing Blue
 
     const topStripMat = new THREE.MeshBasicMaterial({ color: railColor, side: THREE.DoubleSide });
 
@@ -707,6 +598,9 @@ export class TrackManager {
     rightTopStripGeom.setIndex(stripIndices);
     barrierGroup.add(new THREE.Mesh(rightTopStripGeom, topStripMat));
 
+    this.trackGroup.add(barrierGroup);
+    if (this.island) return;
+
     // Glowing Neon Yellow Turn Chevron Signs (>> and << along major curves)
     const chevronMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide });
     const chevronBackMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
@@ -735,7 +629,7 @@ export class TrackManager {
       });
     });
 
-    this.trackGroup.add(barrierGroup);
+
   }
 
   // --------------------------------------------------------------------------
@@ -800,18 +694,21 @@ export class TrackManager {
 
     this.config.boostPads.forEach(ptIdx => {
       const t = ptIdx / this.config.points.length;
-      const pos = this.curve.getPointAt(t);
-      const tangent = this.curve.getTangentAt(t).normalize();
+      const pos = this.curve.getPoint(t);
+      const tangent = this.curve.getTangent(t).normalize();
 
       const pad = new THREE.Mesh(padGeom, padMat);
       pad.position.copy(pos).add(new THREE.Vector3(0, 0.06, 0));
+      pad.rotation.order = 'YXZ';
       pad.rotation.y = Math.atan2(tangent.x, tangent.z);
+      pad.rotation.x = -Math.asin(tangent.y);
 
       const borderGeom = new THREE.RingGeometry(2.4, 2.6, 4);
       borderGeom.rotateX(-Math.PI / 2);
       borderGeom.rotateY(Math.PI / 4);
       const border = new THREE.Mesh(borderGeom, new THREE.MeshBasicMaterial({ color: 0xffffff }));
       border.position.copy(pos).add(new THREE.Vector3(0, 0.08, 0));
+      border.rotation.copy(pad.rotation);
       this.trackGroup.add(border);
 
       this.trackGroup.add(pad);
@@ -830,7 +727,7 @@ export class TrackManager {
     gantry.rotation.y = Math.atan2(tangent.x, tangent.z);
 
     const halfW = this.config.roadWidth / 2 + 1.8;
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.3 });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x455662, metalness: .34, roughness: .52 });
 
     const postGeom = new THREE.BoxGeometry(0.9, 8.0, 0.9);
     const leftPost = new THREE.Mesh(postGeom, postMat);
@@ -848,26 +745,26 @@ export class TrackManager {
       bannerCanvas.height = 256;
       const bCtx = bannerCanvas.getContext('2d')!;
 
-      bCtx.fillStyle = '#0f172a';
+      bCtx.fillStyle = '#1b2a36';
       bCtx.fillRect(0, 0, 1024, 256);
-
-      for (let c = 0; c < 32; c++) {
-        bCtx.fillStyle = c % 2 === 0 ? '#ffffff' : '#000000';
-        bCtx.fillRect(c * 32, 0, 32, 28);
-        bCtx.fillRect(c * 32, 228, 32, 28);
-      }
-
-      bCtx.fillStyle = '#00f0ff';
-      bCtx.font = 'bold 88px sans-serif';
+      bCtx.fillStyle = '#f57840';
+      bCtx.fillRect(0, 0, 1024, 17);
+      bCtx.fillStyle = '#ffebcc';
+      bCtx.font = 'italic bold 93px sans-serif';
       bCtx.textAlign = 'center';
       bCtx.textBaseline = 'middle';
-      bCtx.fillText('K A R T V E R S E', 512, 110);
-
-      bCtx.fillStyle = '#facc15';
-      bCtx.font = 'bold 36px sans-serif';
-      bCtx.fillText(this.config.name.toUpperCase(), 512, 175);
+      bCtx.fillText('KARTVERSE', 512, 111);
+      bCtx.font = 'bold 35px sans-serif';
+      bCtx.fillText(this.config.name.toUpperCase(), 512, 188);
+      for (const x of [15, 915]) {
+        for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) {
+          if ((row + col) % 2 === 0) bCtx.fillRect(x + col * 30, 63 + row * 30, 30, 30);
+        }
+      }
 
       const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+      bannerTex.colorSpace = THREE.SRGBColorSpace;
+      bannerMat.dispose();
       bannerMat = new THREE.MeshStandardMaterial({ map: bannerTex, metalness: 0.4, roughness: 0.4 });
     }
 
@@ -875,13 +772,15 @@ export class TrackManager {
     banner.position.set(0, 6.8, 0);
     gantry.add(banner);
 
-    for (let p = -2; p <= 2; p++) {
-      const lightPod = new THREE.Mesh(
-        new THREE.SphereGeometry(0.38, 14, 14),
-        new THREE.MeshBasicMaterial({ color: 0xfacc15 }) // High-Visibility Racing Gold
-      );
-      lightPod.position.set(p * 2.2, 5.0, 0.35);
-      gantry.add(lightPod);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(4.3, .8, .7), postMat);
+    bar.position.set(0, 5.23, 0);
+    gantry.add(bar);
+    for (let p = -1; p <= 1; p++) {
+      const lens = new THREE.MeshBasicMaterial({color: 0xb13e26});
+      const light = new THREE.Mesh(new THREE.CylinderGeometry(.23,.23,.12,12).rotateX(Math.PI/2),lens);
+      light.position.set(p * 1.24, 5.24, -.39);
+      this.startLights.push(lens);
+      gantry.add(light);
     }
 
     this.trackGroup.add(gantry);
@@ -895,69 +794,7 @@ export class TrackManager {
     const halfWidth = this.config.roadWidth / 2;
     const theme = this.config.theme;
 
-    if (theme === 'BEACH') {
-      // ----------------------------------------------------------------------
-      // TRACK 1: SUNSET PARADISE (BEACH)
-      // ----------------------------------------------------------------------
-      // Palm groves, Thatched Beach Huts, Lighthouse, Waterfall Jump & Bridge
-      const palmCount = 55;
-      for (let i = 0; i < palmCount; i++) {
-        const t = i / palmCount;
-        const pt = this.curve.getPointAt(t);
-        const tangent = this.curve.getTangentAt(t).normalize();
-        const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
-        const side = i % 2 === 0 ? 1 : -1;
-        // Strictly offset outside the road: halfWidth + 8m to 24m
-        const dist = halfWidth + 8.5 + (i % 5) * 3.2;
-        const propPos = pt.clone().addScaledVector(binormal, side * dist);
-
-        const palm = this.createPalmTree();
-        palm.position.copy(propPos);
-        palm.rotation.y = (i * 1.3);
-        this.trackGroup.add(palm);
-
-        // Beach huts & umbrellas
-        if (i % 8 === 0) {
-          const hut = this.createBeachHut();
-          hut.position.copy(propPos).addScaledVector(binormal, side * 7.0);
-          hut.rotation.y = Math.atan2(tangent.x, tangent.z);
-          this.trackGroup.add(hut);
-        }
-      }
-
-      // Waterfall Jump Flanked safely at 38m offset
-      const wfCenter = this.curve.getPointAt(0.35);
-      const wfTan = this.curve.getTangentAt(0.35).normalize();
-      const wfBin = new THREE.Vector3().crossVectors(wfTan, up).normalize();
-      const cliffMat = new THREE.MeshStandardMaterial({ color: 0x47382d, roughness: 0.95 });
-
-      [-1, 1].forEach(side => {
-        const cliff = new THREE.Mesh(new THREE.DodecahedronGeometry(14), cliffMat);
-        cliff.position.copy(wfCenter).addScaledVector(wfBin, side * 38.0).setY(10);
-        cliff.scale.set(1.3, 2.2, 1.3);
-        this.trackGroup.add(cliff);
-      });
-
-      const waterfall = new THREE.Mesh(
-        new THREE.PlaneGeometry(16, 26),
-        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.88, side: THREE.DoubleSide })
-      );
-      waterfall.position.copy(wfCenter).addScaledVector(wfBin, -28).setY(7);
-      waterfall.rotation.y = Math.PI / 2;
-      this.trackGroup.add(waterfall);
-
-      // Lighthouse on coastal bluff
-      const lhGroup = this.createLighthouse();
-      lhGroup.position.set(70, 0, -320);
-      this.trackGroup.add(lhGroup);
-
-      // Floating Sky Island high overhead (140m up)
-      const skyIsland = this.createFloatingIsland();
-      skyIsland.position.set(110, 140, 50);
-      this.trackGroup.add(skyIsland);
-
-    } else if (theme === 'CYBER') {
+    if (theme === 'CYBER') {
       // ----------------------------------------------------------------------
       // TRACK 2: NEON CITY (CYBER METROPOLIS)
       // ----------------------------------------------------------------------
@@ -1076,101 +913,6 @@ export class TrackManager {
   // --------------------------------------------------------------------------
   // PROCEDURAL SCENERY HELPERS (Modular & Clean)
   // --------------------------------------------------------------------------
-  private createPalmTree(): THREE.Group {
-    const palm = new THREE.Group();
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x784f2d, roughness: 0.85 });
-    const frondMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.55, side: THREE.DoubleSide });
-    const nutMat = new THREE.MeshStandardMaterial({ color: 0x45220a, roughness: 0.8 });
-
-    const segH = 3.2;
-    for (let s = 0; s < 3; s++) {
-      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.3 - s * 0.05, 0.42 - s * 0.05, segH, 8), trunkMat);
-      seg.position.set(s * 0.35, segH * (s + 0.5), 0);
-      seg.rotation.z = s * 0.12;
-      seg.castShadow = true;
-      palm.add(seg);
-    }
-
-    const crownPos = new THREE.Vector3(0.7, segH * 3, 0);
-
-    for (let c = 0; c < 4; c++) {
-      const nut = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), nutMat);
-      const angle = (c / 4) * Math.PI * 2;
-      nut.position.set(crownPos.x + Math.cos(angle) * 0.4, crownPos.y - 0.2, crownPos.z + Math.sin(angle) * 0.4);
-      palm.add(nut);
-    }
-
-    for (let leaf = 0; leaf < 10; leaf++) {
-      const leafGroup = new THREE.Group();
-      leafGroup.position.copy(crownPos);
-      leafGroup.rotation.y = (leaf / 10) * Math.PI * 2;
-
-      const frond = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 5.8), frondMat);
-      frond.position.set(0, -0.5, 2.6);
-      frond.rotation.x = -0.35;
-      frond.castShadow = true;
-      leafGroup.add(frond);
-      palm.add(leafGroup);
-    }
-    return palm;
-  }
-
-  private createBeachHut(): THREE.Group {
-    const hut = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(5.0, 3.5, 5.0), new THREE.MeshStandardMaterial({ color: 0xa16207 }));
-    body.position.y = 1.75;
-    hut.add(body);
-
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 2.8, 4), new THREE.MeshStandardMaterial({ color: 0xca8a04 }));
-    roof.position.y = 4.8;
-    roof.rotation.y = Math.PI / 4;
-    hut.add(roof);
-
-    const parasolPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-    parasolPole.position.set(4.2, 1.6, 0);
-    hut.add(parasolPole);
-
-    const parasol = new THREE.Mesh(new THREE.ConeGeometry(2.2, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0x0284c7 })); // Nautical Azure
-    parasol.position.set(4.2, 3.2, 0);
-    hut.add(parasol);
-    return hut;
-  }
-
-  private createLighthouse(): THREE.Group {
-    const lh = new THREE.Group();
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 5.5, 42, 16), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 }));
-    tower.position.y = 21;
-    lh.add(tower);
-
-    for (let s = 0; s < 3; s++) {
-      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(3.8 - s * 0.4, 4.3 - s * 0.4, 4, 16), new THREE.MeshStandardMaterial({ color: 0x0284c7 })); // Royal Nautical Blue
-      stripe.position.y = 10 + s * 10;
-      lh.add(stripe);
-    }
-
-    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 3.8, 6, 12), new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9 }));
-    lantern.position.y = 44;
-    lh.add(lantern);
-
-    const beamGeom = new THREE.ConeGeometry(14, 160, 16, 1, true).rotateX(-Math.PI / 2);
-    this.lighthouseBeacon = new THREE.Mesh(beamGeom, new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
-    this.lighthouseBeacon.position.set(0, 44, 80);
-    lh.add(this.lighthouseBeacon);
-    return lh;
-  }
-
-  private createFloatingIsland(): THREE.Group {
-    const island = new THREE.Group();
-    const rock = new THREE.Mesh(new THREE.ConeGeometry(36, 50, 7), new THREE.MeshStandardMaterial({ color: 0x473c33, roughness: 0.95 }));
-    rock.rotation.x = Math.PI;
-    island.add(rock);
-
-    const grass = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 4, 16), new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.9 }));
-    grass.position.y = 2;
-    island.add(grass);
-    return island;
-  }
-
   private createCyberBuilding(seed: number): THREE.Group {
     const bldg = new THREE.Group();
     const w = 18 + (seed % 3) * 6;
@@ -1312,31 +1054,16 @@ export class TrackManager {
   // --------------------------------------------------------------------------
   // 11. STRICT TRACK CLEARANCE VALIDATION
   // --------------------------------------------------------------------------
-  private validateTrackClearance(): void {
-    const obstacles: { name: string; position: THREE.Vector3; radius: number }[] = [];
-    const minSafeClearance = this.config.roadWidth / 2 + 5.0;
-
-    // Collect all solid props in the trackGroup
-    this.trackGroup.children.forEach((child, idx) => {
-      if (child === this.roadMesh || child === this.skyDome || child === this.oceanMesh) return;
-      if (child.position.length() > 0) {
-        obstacles.push({
-          name: `Prop_${idx}`,
-          position: child.position,
-          radius: 3.0
-        });
-      }
+  public setStartingLights(countdown: number | null): void {
+    this.startLights.forEach((light, i) => {
+      light.color.setHex(countdown === 0 || countdown === null ? 0x66dc99 :
+        i <= 3 - countdown ? 0xff6837 : 0x563c37);
     });
-
-    const result = TrackValidator.validateTrackCorridor(this.curve, this.config.roadWidth, obstacles, 200);
-    console.log(`[TRACK MANAGER] Theme: ${this.config.theme}, Clearance Status: ${result.passed ? 'PERFECT' : 'SAFE'}, Min Margin: ${result.minClearanceFound.toFixed(2)}m`);
   }
 
-  // --------------------------------------------------------------------------
-  // 12. ANIMATION LOOP (Lighthouse Beacon, Clouds, Ocean Waves & Coins)
-  // --------------------------------------------------------------------------
   public update(delta: number, playerPos: THREE.Vector3): void {
-    // 1. Dynamic Ocean Waves Undulation
+    this.island?.update(delta, playerPos);
+    // Other circuits retain their animated ground surface.
     this.oceanTime += delta * 1.5;
     if (this.oceanMesh && this.oceanBaseVertices) {
       const posAttr = this.oceanMesh.geometry.attributes.position;
@@ -1384,29 +1111,21 @@ export class TrackManager {
   // 13. TRACK CONSTRAINT & BOUNDARY ENFORCEMENT (PHYSICS & CLAMPING)
   // --------------------------------------------------------------------------
   public getTrackConstraint(kartPos: THREE.Vector3): TrackConstraintResult {
-    let closestSample = this.splineSamples[0];
-    let minDistanceSq = Infinity;
-
+    let best = 0, fraction = 0, minDistance = Infinity;
     for (let i = 0; i < this.splineSamples.length; i++) {
-      const s = this.splineSamples[i];
-      const dx = s.point.x - kartPos.x;
-      const dz = s.point.z - kartPos.z;
-      const dSq = dx * dx + dz * dz;
-      if (dSq < minDistanceSq) {
-        minDistanceSq = dSq;
-        closestSample = s;
-      }
+      const a = this.splineSamples[i].point;
+      const b = this.splineSamples[(i + 1) % this.splineSamples.length].point;
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const u = THREE.MathUtils.clamp(((kartPos.x - a.x) * dx + (kartPos.z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
+      const x = kartPos.x - a.x - u * dx, z = kartPos.z - a.z - u * dz;
+      const distance = x * x + z * z;
+      if (distance < minDistance) { minDistance = distance; best = i; fraction = u; }
     }
-
-    const tangent = closestSample.tangent;
-    const binormal = closestSample.binormal;
-    const toKart = new THREE.Vector3().subVectors(kartPos, closestSample.point);
-
-    const forwardProjection = toKart.dot(tangent);
-    const fineCenter = closestSample.point.clone().addScaledVector(tangent, forwardProjection);
-
-    const toFineKart = new THREE.Vector3().subVectors(kartPos, fineCenter);
-    const lateralOffset = toFineKart.dot(binormal);
+    const a = this.splineSamples[best], b = this.splineSamples[(best + 1) % this.splineSamples.length];
+    const fineCenter = a.point.clone().lerp(b.point, fraction);
+    const tangent = a.tangent.clone().lerp(b.tangent, fraction).normalize();
+    const binormal = a.binormal.clone().lerp(b.binormal, fraction).normalize();
+    const lateralOffset = kartPos.clone().sub(fineCenter).dot(binormal);
 
     const roadHalfWidth = this.config.roadWidth / 2;
     const maxBoundary = roadHalfWidth + 0.6;
@@ -1456,7 +1175,7 @@ export class TrackManager {
     for (let i = 0; i < 8; i++) {
       const row = Math.floor(i / 2);
       const col = i % 2 === 0 ? -1 : 1;
-      const t = (1.0 - 0.02 - row * 0.012) % 1.0;
+      const t = 1 - (18 + row * 6 + (i % 2) * 1.75) / this.curve.getLength();
       const pt = this.curve.getPointAt(t);
       const tangent = this.curve.getTangentAt(t).normalize();
       const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();

@@ -134,7 +134,7 @@ export class AuthService {
       }
 
       // 2. Also sync with profiles table
-      await supabase.from('profiles').upsert({
+      const { error: profileError } = await supabase.from('profiles').upsert({
         id: updated.id,
         username: updated.username,
         avatar_url: updated.avatar_url,
@@ -144,7 +144,7 @@ export class AuthService {
         updated_at: new Date().toISOString()
       });
 
-      return { success: true, profile: updated };
+      return { success: true, profile: updated, error: profileError?.message || kartUsersError?.message };
     } catch (err: any) {
       console.error('Failed to update name in Supabase:', err);
       return { success: true, profile: updated, error: err.message };

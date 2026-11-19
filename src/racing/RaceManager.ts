@@ -15,7 +15,7 @@ export class RaceManager {
   public state: 'COUNTDOWN' | 'RACING' | 'FINISHED' = 'COUNTDOWN';
 
   public countdownValue: number | null = 3;
-  private countdownTimer = 3.0;
+  private countdownEndsAt = 0;
   private raceStartTime = 0;
   public totalRaceTime = 0;
   public ranks: RacerRank[] = [];
@@ -27,78 +27,66 @@ export class RaceManager {
 
   public startCountdown(): void {
     this.state = 'COUNTDOWN';
-    this.countdownTimer = 3.99;
+    this.countdownEndsAt = performance.now() / 1000 + 3;
     this.countdownValue = 3;
+    useGameStore.getState().setTelemetry({ countdownNumber: 3 });
     audio.playCountdown(3);
     useGameStore.getState().setRaceStatus('COUNTDOWN');
   }
 
   public update(
-    delta: number,
+    _delta: number,
     racerPositions: { id: string; position: THREE.Vector3; forward?: THREE.Vector3 }[],
     localPlayerId: string,
-    forward: THREE.Vector3
+    forward: THREE.Vector3,
+    synchronized: ReadonlySet<string> = new Set()
   ): { canDrive: boolean; isCountdown: boolean; localRank: number; totalRacers: number } {
-    // 1. Handle Countdown phase
-    if (this.state === 'COUNTDOWN') {
-      const prevInt = Math.floor(this.countdownTimer);
-      this.countdownTimer -= delta;
-      const nextInt = Math.floor(this.countdownTimer);
-
-      if (nextInt !== prevInt) {
-        if (nextInt === 2) {
-          this.countdownValue = 2;
-          audio.playCountdown(2);
-        } else if (nextInt === 1) {
-          this.countdownValue = 1;
-          audio.playCountdown(1);
-        } else if (nextInt === 0) {
-          this.countdownValue = 0; // GO!
-          audio.playCountdown(0);
-          this.state = 'RACING';
-          this.raceStartTime = performance.now() / 1000;
-          this.lapManager.onRaceStart();
-          useGameStore.getState().setRaceStatus('RACING');
-        }
-      }
-
-      useGameStore.getState().setTelemetry({
-        countdownNumber: this.countdownValue
-      });
-
-      return {
-        canDrive: false,
-        isCountdown: true,
-        localRank: 1,
-        totalRacers: racerPositions.length
-      };
+    if (this.state === 'FINISHED') {
+      const result = useGameStore.getState().telemetry;
+      return {canDrive: false, isCountdown: false, localRank: result.position, totalRacers: result.totalRacers};
     }
-
-    // Clear countdown UI after "GO!" displays for 1.0 second into the race
-    if (this.countdownValue !== null) {
-      this.countdownTimer -= delta;
-      if (this.countdownTimer < -1.0) {
-        this.countdownValue = null;
-        useGameStore.getState().setTelemetry({ countdownNumber: null });
-      }
-    }
-
     const currentTime = performance.now() / 1000;
+    if (this.state === 'COUNTDOWN') {
+      const remaining = Math.max(0, Math.ceil(this.countdownEndsAt - currentTime));
+      if (remaining !== this.countdownValue) {
+        this.countdownValue = remaining;
+        audio.playCountdown(remaining);
+        useGameStore.getState().setTelemetry({ countdownNumber: remaining });
+      }
+
+      if (remaining > 0) {
+        return {
+          canDrive: false,
+          isCountdown: true,
+          localRank: useGameStore.getState().telemetry.position,
+          totalRacers: racerPositions.length
+        };
+      }
+      this.state = 'RACING';
+      this.raceStartTime = currentTime;
+      this.lapManager.onRaceStart();
+      useGameStore.getState().setRaceStatus('RACING');
+    }
+
+    if (this.countdownValue === 0 && currentTime - this.raceStartTime >= 1) {
+      this.countdownValue = null;
+      useGameStore.getState().setTelemetry({ countdownNumber: null });
+    }
+
     this.totalRaceTime = currentTime - this.raceStartTime;
 
     // 2. Update Lap Manager for all racers (Local Player, AI Opponents & Remote)
-    let isWrongWay = false;
+    let isWrongWay = false, localFinished = false;
 
     for (const r of racerPositions) {
+      if (synchronized.has(r.id)) continue;
       const isLocal = r.id === localPlayerId;
       const rFwd = r.forward || (isLocal ? forward : new THREE.Vector3(0, 0, 1));
       const res = this.lapManager.updateRacer(r.id, r.position, rFwd, currentTime, isLocal);
 
       if (isLocal) {
         isWrongWay = res.isWrongWay;
-        if (res.raceCompleted && this.state !== 'FINISHED') {
-          this.finishRace(localPlayerId);
-        }
+        localFinished = res.raceCompleted;
       }
     }
 
@@ -124,14 +112,15 @@ export class RaceManager {
     useGameStore.getState().setTelemetry({
       position: localRank,
       totalRacers: racerPositions.length,
-      currentLap: Math.min(currentLap, 3),
-      totalLaps: 3,
+      currentLap,
+      totalLaps: this.lapManager.totalLaps,
       raceTime: this.totalRaceTime,
       bestLapTime,
       isWrongWay,
       leaderboard
     });
 
+    if (localFinished) this.finishRace(localPlayerId);
     return {
       canDrive: this.state === 'RACING',
       isCountdown: false,
@@ -146,21 +135,28 @@ export class RaceManager {
 
     const localProg = this.lapManager.getProgress(localPlayerId);
     const finalRank = forceRank !== undefined ? forceRank : (this.ranks.find(r => r.id === localPlayerId)?.rank || 1);
-    const finalTime = localProg ? localProg.totalRaceTime : this.totalRaceTime;
+    const finalTime = localProg?.isFinished ? localProg.totalRaceTime : this.totalRaceTime;
     const bestLap = localProg ? localProg.bestLapTime : 0;
     const totalRacersCount = forceRank !== undefined ? 1 : this.ranks.length;
 
     // Immediately update store state and telemetry
-    useGameStore.getState().setRaceStatus('FINISHED');
     useGameStore.getState().setTelemetry({
       position: finalRank,
       totalRacers: totalRacersCount,
-      countdownNumber: null
+      raceTime: finalTime,
+      bestLapTime: bestLap,
+      speedKmh: 0,
+      countdownNumber: null,
+      ...(forceRank === undefined ? {} : { leaderboard: [{id: localPlayerId, name: localProg?.name || 'You', rank: 1, lap: localProg?.lap || 1, isPlayer: true}] })
     });
 
-    // Record results to Supabase
+    useGameStore.getState().setRaceStatus('FINISHED');
+
+    if (forceRank !== undefined || !localProg?.isFinished) return;
+    // Record completed course results to Supabase
     const { profile, selectedTrack, selectedKart, raceMode } = useGameStore.getState();
 
+    useGameStore.getState().addXP(Math.max(50, Math.round(500 / finalRank)));
     LeaderboardService.recordRaceResult({
       userId: profile.id,
       username: profile.username,

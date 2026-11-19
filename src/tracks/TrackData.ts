@@ -24,41 +24,45 @@ export interface TrackConfig {
   itemBoxClusters: number[]; // Spline indices
 }
 
+/** All track consumers use the same closed centerline and arc-length table. */
+export function createTrackCurve(config: TrackConfig): THREE.CatmullRomCurve3 {
+  const curve = new THREE.CatmullRomCurve3(config.points, true, 'centripetal');
+  curve.arcLengthDivisions = 1024;
+  return curve;
+}
+
 export const TRACKS: Record<string, TrackConfig> = {
   sunset_coast: {
     id: 'sunset_coast',
-    name: 'Sunset Paradise',
-    tagline: 'Sun-drenched tropical paradise with waterfall jump, mountain tunnel & ocean bridge',
+    name: 'Sunset Island Circuit',
+    tagline: 'Harbor grid, headland hairpin and a high crossing over the lagoon',
     theme: 'BEACH',
-    difficulty: 'EASY',
+    difficulty: 'MEDIUM',
     laps: 3,
-    roadWidth: 16.0,
-    skyColor: new THREE.Color(0x0284c7),       // Crisp Azure Blue
-    horizonColor: new THREE.Color(0xbae6fd),   // Warm Golden Horizon
-    sunPosition: new THREE.Vector3(260, 140, -320), // Natural golden daylight
-    roadColor: new THREE.Color(0x0b1120),      // Deep Obsidian Asphalt
-    kerbColor1: new THREE.Color(0x0284c7),     // Monaco Racing Blue
-    kerbColor2: new THREE.Color(0xffffff),     // Crisp Alpine White
-    terrainColor: new THREE.Color(0xfde047),   // Warm Golden Beach Sand
+    roadWidth: 16,
+    skyColor: new THREE.Color(0x759aac),
+    horizonColor: new THREE.Color(0xffbb96),
+    sunPosition: new THREE.Vector3(-230, 108, 640),
+    roadColor: new THREE.Color(0x393e43),
+    kerbColor1: new THREE.Color(0xff713c),
+    kerbColor2: new THREE.Color(0xffebce),
+    terrainColor: new THREE.Color(0xe4bb89),
     points: [
-      new THREE.Vector3(0, 0, 0),             // 0. Finish line & Starting Gantry
-      new THREE.Vector3(0, 0, 80),            // 1. Home straight
-      new THREE.Vector3(0, 0, 160),           // 2. Home straight exit
-      new THREE.Vector3(55, 0.5, 235),        // 3. Turn 1 wide coastal turn entry
-      new THREE.Vector3(150, 1.2, 280),       // 4. Turn 1 apex
-      new THREE.Vector3(245, 2.0, 240),       // 5. Palm forest section
-      new THREE.Vector3(315, 7.5, 140),       // 6. Waterfall jump hill crest
-      new THREE.Vector3(345, 2.0, 35),        // 7. Waterfall jump landing
-      new THREE.Vector3(315, 0.5, -75),       // 8. Mountain tunnel entrance
-      new THREE.Vector3(215, 0.5, -170),      // 9. Mountain tunnel exit
-      new THREE.Vector3(105, 2.2, -240),      // 10. Ocean bridge boardwalk entrance
-      new THREE.Vector3(-45, 2.2, -230),      // 11. Ocean bridge boardwalk exit
-      new THREE.Vector3(-145, 1.0, -160),     // 12. Nitro boost coastal straight
-      new THREE.Vector3(-95, 0.5, -160),      // 13. Approach to home straight
-      new THREE.Vector3(0, 0, -80)            // 14. Home straight entry
-    ],
-    boostPads: [4, 8, 12],
-    itemBoxClusters: [2, 5, 10]
+      // The quay straight runs north, then folds into rising island esses.
+      [0, 2, 0], [0, 2, 88], [22, 3, 143], [74, 7, 158],
+      [115, 13, 135], [151, 18, 145], [174, 22, 190],
+      // Ocean overlook: a tight but two-lane descending hairpin.
+      [192, 25, 233], [224, 26, 235], [236, 23, 208], [211, 19, 165],
+      [204, 14, 114], [235, 10, 70], [272, 7, 43],
+      // The basalt gallery drops onto a long westbound cable crossing.
+      [280, 6, -14], [249, 8, -75], [201, 11, -105],
+      [125, 14, -109], [47, 13, -109], [-17, 9, -105],
+      // A second switchback brings the field past the harbor grandstand.
+      [-63, 6, -117], [-86, 3, -96], [-78, 2, -70],
+      [-43, 2, -63], [-13, 2, -51], [0, 2, -28]
+    ].map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+    boostPads: [2, 12, 18],
+    itemBoxClusters: [3, 10, 20]
   },
 
   neon_city: {

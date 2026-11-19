@@ -18,6 +18,7 @@ app.use(express.json());
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
+  connectionStateRecovery: { maxDisconnectionDuration: 15000 },
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
@@ -25,6 +26,7 @@ const io = new Server(httpServer, {
 });
 
 const roomManager = new RoomManager();
+const departures = new Map<string, ReturnType<typeof setTimeout>>();
 
 // Health check
 app.get('/health', (req, res) => {
@@ -33,6 +35,9 @@ app.get('/health', (req, res) => {
 
 io.on('connection', (socket) => {
   console.log(`[CONNECT] Socket connected: ${socket.id}`);
+
+  clearTimeout(departures.get(socket.id));
+  departures.delete(socket.id);
 
   // 1. Create Room
   socket.on('create_room', (data, callback) => {
@@ -49,9 +54,9 @@ io.on('connection', (socket) => {
 
       socket.join(room.code);
       console.log(`[ROOM CREATED] Code: ${room.code} by ${data.username}`);
-      callback({ success: true, room: roomManager.serializeRoom(room) });
+      callback?.({ success: true, room: roomManager.serializeRoom(room) });
     } catch (e: any) {
-      callback({ success: false, error: e.message });
+      callback?.({ success: false, error: e.message });
     }
   });
 
@@ -69,7 +74,7 @@ io.on('connection', (socket) => {
       });
 
       if (!res.success || !res.room) {
-        callback({ success: false, error: res.error });
+        callback?.({ success: false, error: res.error });
         return;
       }
 
@@ -77,12 +82,12 @@ io.on('connection', (socket) => {
       console.log(`[PLAYER JOINED] ${data.username} joined room ${res.room.code}`);
 
       const serialized = roomManager.serializeRoom(res.room);
-      callback({ success: true, room: serialized });
+      callback?.({ success: true, room: serialized });
 
       // Notify other players in room
       socket.to(res.room.code).emit('room_updated', serialized);
     } catch (e: any) {
-      callback({ success: false, error: e.message });
+      callback?.({ success: false, error: e.message });
     }
   });
 
@@ -171,12 +176,14 @@ io.on('connection', (socket) => {
   });
 
   // 8. Power-Up Item Use
-  socket.on('use_item', ({ code, itemType, targetId, originPos }) => {
+  socket.on('use_item', ({ code, itemType, targetId, originPos, direction }) => {
+    if (!roomManager.getRoom(code)?.players.has(socket.id)) return;
     io.to(code).emit('item_spawned', {
       senderId: socket.id,
       itemType,
       targetId,
       originPos,
+      direction,
       timestamp: Date.now()
     });
   });
@@ -234,16 +241,23 @@ io.on('connection', (socket) => {
     io.to(code).emit('standings_updated', sorted.map(p => ({ id: p.id, position: p.position })));
   });
 
-  // 11. Disconnect
-  socket.on('disconnect', () => {
-    console.log(`[DISCONNECT] Socket disconnected: ${socket.id}`);
+  function removePlayer() {
+    clearTimeout(departures.get(socket.id));
+    departures.delete(socket.id);
     const res = roomManager.removePlayer(socket.id);
     if (res.room) {
+      socket.leave(res.room.code);
       io.to(res.room.code).emit('player_left', {
         id: socket.id,
         room: roomManager.serializeRoom(res.room)
       });
     }
+  }
+
+  socket.on('leave_room', removePlayer);
+  socket.on('disconnect', reason => {
+    if (reason === 'client namespace disconnect') removePlayer();
+    else departures.set(socket.id, setTimeout(removePlayer, 15000));
   });
 });
 

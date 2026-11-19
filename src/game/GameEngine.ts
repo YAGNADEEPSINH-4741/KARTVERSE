@@ -4,6 +4,7 @@
 // ============================================================================
 
 import * as THREE from 'three';
+import { disposeObjects } from './disposeObjects';
 import { TrackManager } from '../tracks/TrackManager';
 import { KartPhysics } from '../vehicles/KartPhysics';
 import { KartVisual, KartModelFactory } from '../vehicles/KartModels';
@@ -18,7 +19,7 @@ import { useGameStore } from '../store/gameStore';
 import { socketManager } from '../multiplayer/SocketManager';
 import { NetworkSync } from '../multiplayer/NetworkSync';
 import { PowerUpType } from '../items/PowerUpSystem';
-import { touchControls } from '../input/TouchControls';
+import { touchControls, resetTouchControls } from '../input/TouchControls';
 
 export class GameEngine {
   public container: HTMLElement;
@@ -49,6 +50,8 @@ export class GameEngine {
 
   // Race Lighting Group
   private raceLightsGroup = new THREE.Group();
+  private raceSun?: THREE.DirectionalLight;
+  private sunOffset = new THREE.Vector3();
 
   // AI Opponents
   public aiRacers: AIRacer[] = [];
@@ -68,6 +71,9 @@ export class GameEngine {
 
   // Telemetry send throttle (multiplayer 20Hz)
   private telemetrySendTimer = 0;
+  private lastPad: THREE.Mesh | null = null;
+  private inputs = new AbortController();
+  private remoteProgress = new Set<string>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -87,17 +93,20 @@ export class GameEngine {
     this.camera = new THREE.PerspectiveCamera(62, width / height, 0.2, 1000);
     this.camera.position.set(0, 3, 7);
 
+    const quality = useGameStore.getState().graphicsQuality;
+    const mobile = window.matchMedia('(pointer: coarse)').matches;
+    const pixelLimit = {low: 1, medium: 1.25, high: 1.6, ultra: 2}[quality];
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: quality !== 'low',
       powerPreference: 'high-performance',
       stencil: false,
       depth: true
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelLimit, mobile ? 1.35 : 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = quality !== 'low' && (!mobile || quality === 'ultra');
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     // Explicit absolute positioning prevents layout overflow / splitting
@@ -116,7 +125,8 @@ export class GameEngine {
 
     // 4. Register Event Listeners
     this.bindInputs();
-    window.addEventListener('resize', this.onResize);
+    window.addEventListener('resize', this.onResize, {signal: this.inputs.signal});
+    window.addEventListener('blur', () => {this.keys = {}; resetTouchControls();}, {signal: this.inputs.signal});
 
     // 5. Build Showroom Stage as initial view
     this.initShowroomSession();
@@ -137,9 +147,8 @@ export class GameEngine {
     this.scene.remove(this.raceLightsGroup);
     this.clearRaceEntities();
 
-    while (this.showroomGroup.children.length > 0) {
-      this.showroomGroup.remove(this.showroomGroup.children[0]);
-    }
+    disposeObjects(this.showroomGroup);
+    this.showroomGroup.clear();
     this.scene.add(this.showroomGroup);
 
     this.scene.fog = new THREE.FogExp2(0x060814, 0.025);
@@ -156,11 +165,11 @@ export class GameEngine {
     mainSpot.castShadow = true;
     this.showroomGroup.add(mainSpot);
 
-    const rimLeft = new THREE.DirectionalLight(0x00f0ff, 3.5);
+    const rimLeft = new THREE.DirectionalLight(0x76c4dc, 2.5);
     rimLeft.position.set(-6, 4, -4);
     this.showroomGroup.add(rimLeft);
 
-    const rimRight = new THREE.DirectionalLight(0xff007f, 3.5);
+    const rimRight = new THREE.DirectionalLight(0xff905f, 3.5);
     rimRight.position.set(6, 4, -4);
     this.showroomGroup.add(rimRight);
 
@@ -222,7 +231,8 @@ export class GameEngine {
 
   public updateShowroomKart(): void {
     const store = useGameStore.getState();
-    if (this.localKartVisual) {
+    if (this.localKartVisual?.group.parent === this.showroomGroup) {
+      disposeObjects(this.localKartVisual.group);
       this.showroomGroup.remove(this.localKartVisual.group);
     }
 
@@ -252,44 +262,44 @@ export class GameEngine {
 
     // 1. Build 3D Track
     this.trackManager = new TrackManager(this.scene, trackId);
-    this.scene.fog = new THREE.FogExp2(0xf59e0b, 0.0007); // Soft golden sunset horizon haze
+    this.scene.fog = new THREE.FogExp2(this.trackManager.config.horizonColor, 0.00155); // Soft golden sunset horizon haze
     this.scene.background = null; // Let the 3D Sunset Sky Dome render!
 
     // 2. Set Up Dedicated Race Lighting
-    while (this.raceLightsGroup.children.length > 0) {
-      this.raceLightsGroup.remove(this.raceLightsGroup.children[0]);
-    }
+    disposeObjects(this.raceLightsGroup);
+    this.raceLightsGroup.clear();
     this.scene.add(this.raceLightsGroup);
 
     // Warm Sunset Ambient Hemisphere Light
     const hemiLight = new THREE.HemisphereLight(
-      0xffedd5, // Golden sunset sky bounce
-      0x0284c7, // Turquoise ocean reflection bounce
-      1.8       // Rich ambient illumination
+      0xffe5cf, // Golden sunset sky bounce
+      0x7b9baa, // Cool water bounce
+      1.55      // Open-sky illumination
     );
     this.raceLightsGroup.add(hemiLight);
 
     // Ambient Sun Fill Light
-    const ambientFill = new THREE.AmbientLight(0xffedd5, 1.4);
+    const ambientFill = new THREE.AmbientLight(0xf5e2cf, .46);
     this.raceLightsGroup.add(ambientFill);
 
     // Directional Sunset Sunlight
-    const sunLight = new THREE.DirectionalLight(0xffedd5, 2.5);
+    const sunLight = new THREE.DirectionalLight(0xffd0a3, 2.05);
     sunLight.position.copy(this.trackManager.config.sunPosition);
     sunLight.castShadow = true;
     sunLight.shadow.bias = -0.0004;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 800;
-    sunLight.shadow.camera.left = -160;
-    sunLight.shadow.camera.right = 160;
-    sunLight.shadow.camera.top = 160;
-    sunLight.shadow.camera.bottom = -160;
-    this.raceLightsGroup.add(sunLight);
+    const mapSize = store.graphicsQuality === 'ultra' ? 2048 : 1024;
+    sunLight.shadow.mapSize.set(mapSize, mapSize);
+    sunLight.shadow.camera.near = 1;
+    sunLight.shadow.camera.far = 240;
+    sunLight.shadow.camera.left = sunLight.shadow.camera.bottom = -43;
+    sunLight.shadow.camera.right = sunLight.shadow.camera.top = 43;
+    sunLight.shadow.normalBias = .035;
+    this.sunOffset.copy(sunLight.position).normalize().multiplyScalar(120);
+    this.raceSun = sunLight;
+    this.raceLightsGroup.add(sunLight, sunLight.target);
 
     // Camera-Mounted Kart Follow Key Light (Ensures kart body, spoiler & driver are brilliantly lit)
-    const camKeyLight = new THREE.DirectionalLight(0xfff8f0, 2.8);
+    const camKeyLight = new THREE.DirectionalLight(0xfff8f0, .85);
     camKeyLight.position.set(0, 2.0, 3.0);
     this.camera.add(camKeyLight);
     this.scene.add(this.camera);
@@ -310,7 +320,11 @@ export class GameEngine {
     const grid = this.trackManager.getStartingGrid();
 
     // Local Player (Pole Position Slot 0)
-    const localStart = grid[0];
+    const gridIds = [...store.roomPlayers].sort((a,b) =>
+      Number(b.isHost) - Number(a.isHost) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    ).map(player => player.id);
+    const localIndex = isMultiplayer ? Math.max(0, gridIds.indexOf(socketManager.getLocalPlayerId())) : 0;
+    const localStart = grid[localIndex] || grid[0];
     this.localKartPhysics = new KartPhysics();
     this.localKartPhysics.position.copy(localStart.position);
     this.localKartPhysics.rotationY = localStart.rotationY;
@@ -341,7 +355,7 @@ export class GameEngine {
     this.lapManager.registerRacer(localPlayerId, store.profile.username || 'You');
 
     // 5. Populate Grid: Opponents (AI and/or Remote Players)
-    if (!isMultiplayer) {
+    if (!isMultiplayer && store.raceMode !== 'TIME_TRIAL') {
       const racingPath = new RacingPath(this.trackManager.curve, this.trackManager.config.roadWidth);
 
       for (let i = 1; i < 8; i++) {
@@ -361,13 +375,13 @@ export class GameEngine {
         this.lapManager.registerRacer(ai.profile.id, ai.profile.name);
         this.aiRacers.push(ai);
       }
-    } else {
+    } else if (isMultiplayer) {
       // Register all other multiplayer participants from room
       const localId = socketManager.getLocalPlayerId();
       const remoteRoomPlayers = store.roomPlayers.filter(p => p.id !== localId);
 
       remoteRoomPlayers.forEach((player, idx) => {
-        const slot = grid[idx + 1] || grid[1];
+        const slot = grid[gridIds.indexOf(player.id)] || grid[1];
         const entity = this.networkSync.registerRemotePlayer(
           player.id,
           player.kartId || 'velocity_gt',
@@ -386,10 +400,27 @@ export class GameEngine {
       });
 
       socketManager.onRemoteTelemetry = (packet) => {
-        this.networkSync.handleTelemetry(packet);
         if (!this.lapManager.hasRacer(packet.playerId)) {
           const pInfo = useGameStore.getState().roomPlayers.find(p => p.id === packet.playerId);
-          this.lapManager.registerRacer(packet.playerId, pInfo?.username || 'Remote Racer');
+          if (!pInfo) return;
+          this.networkSync.registerRemotePlayer(pInfo.id, pInfo.kartId, pInfo.kartColor, pInfo.username, pInfo.isHost);
+          this.lapManager.registerRacer(packet.playerId, pInfo.username);
+        }
+        this.networkSync.handleTelemetry(packet);
+        const progress = this.lapManager.getProgress(packet.playerId)!;
+        const sync = packet.progress;
+        if (sync && Number.isInteger(sync.lap) && sync.lap >= 1 && sync.lap <= this.lapManager.totalLaps &&
+            Number.isInteger(sync.checkpoint) && sync.checkpoint >= -1 && sync.checkpoint < this.lapManager.checkpoints.length &&
+            Number.isFinite(sync.time) && sync.time >= 0 && Number.isFinite(sync.best) && sync.best >= 0) {
+          this.remoteProgress.add(packet.playerId);
+          if (!progress.isFinished) {
+            progress.lap = sync.lap;
+            progress.lastPassedCheckpoint = sync.checkpoint;
+            progress.bestLapTime = sync.best;
+            progress.totalRaceTime = sync.time;
+            progress.isFinished = sync.finished && sync.time > 0;
+            progress.state = progress.isFinished ? 'RACE_FINISHED' : 'RACING';
+          }
         }
       };
 
@@ -408,6 +439,10 @@ export class GameEngine {
       };
     }
 
+    store.setTelemetry({currentLap: 1, totalLaps: this.trackManager.config.laps, totalRacers: this.lapManager.progressMap.size,
+      position: localIndex + 1, bestLapTime: 0, raceTime: 0, currentItem: null, speedKmh: 0, isWrongWay: false,
+      driftLevel: 0, nitroPercent: 100, miniTurboNotification: null, leaderboard: [], racerPositions: []});
+    this.lastPad = null;
     // 6. Start Countdown
     this.raceManager.startCountdown();
   }
@@ -415,7 +450,11 @@ export class GameEngine {
   public handleRemotePlayerDeparture(playerId: string, reason: string): void {
     console.log(`[MULTIPLAYER] Handling departure for ${playerId}, reason: ${reason}`);
     // 1. Remove 3D visual & nametag from scene
+    const remote = this.networkSync.remotePlayers.get(playerId);
+    if (!remote) return;
+    disposeObjects(remote.visual.group);
     this.networkSync.removePlayer(playerId);
+    this.remoteProgress.delete(playerId);
 
     // 2. Remove from lap manager
     this.lapManager.removeRacer(playerId);
@@ -445,23 +484,31 @@ export class GameEngine {
   }
 
   private clearRaceEntities(): void {
+    socketManager.onRemoteTelemetry = undefined;
+    socketManager.onRemoteItemUse = undefined;
+    socketManager.onPlayerLeft = undefined;
+    this.remoteProgress.clear();
     while (this.camera.children.length > 0) {
       this.camera.remove(this.camera.children[0]);
     }
-    if (this.trackManager) {
+    if (this.trackManager?.trackGroup.parent) {
+      disposeObjects(this.trackManager.trackGroup);
       this.scene.remove(this.trackManager.trackGroup);
     }
-    if (this.localKartVisual) {
-      this.scene.remove(this.localKartVisual.group);
+    if (this.localKartVisual?.group.parent) {
+      disposeObjects(this.localKartVisual.group);
+      this.localKartVisual.group.removeFromParent();
     }
-    this.aiRacers.forEach(ai => ai.dispose(this.scene));
+    this.aiRacers.forEach(ai => {disposeObjects(ai.visual.group); ai.dispose(this.scene);});
     this.aiRacers = [];
+    this.networkSync.remotePlayers.forEach(player => disposeObjects(player.visual.group));
     this.networkSync.clear();
     this.itemBoxManager.clear();
   }
 
   private bindInputs(): void {
     window.addEventListener('keydown', (e) => {
+      if (this.mode === 'RACING' && ['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
       this.keys[e.code] = true;
 
       if (this.mode === 'RACING') {
@@ -472,11 +519,11 @@ export class GameEngine {
           this.resetKartToNearestTrackPoint();
         }
       }
-    });
+    }, {signal: this.inputs.signal});
 
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false;
-    });
+    }, {signal: this.inputs.signal});
   }
 
   private useHeldPowerUp(): void {
@@ -523,9 +570,9 @@ export class GameEngine {
   }
 
   private resetKartToNearestTrackPoint(): void {
-    const t = 0.05;
-    const pt = this.trackManager.curve.getPointAt(t);
-    this.localKartPhysics.position.copy(pt).add(new THREE.Vector3(0, 0.4, 0));
+    const near = this.trackManager.getTrackConstraint(this.localKartPhysics.position);
+    this.localKartPhysics.position.copy(near.nearestCenter).addScaledVector(new THREE.Vector3(0, 1, 0), .2);
+    this.localKartPhysics.rotationY = Math.atan2(near.tangent.x, near.tangent.z);
     this.localKartPhysics.velocity.set(0, 0, 0);
     this.localKartPhysics.speed = 0;
   }
@@ -570,9 +617,28 @@ export class GameEngine {
     }
   }
 
+  private publishTelemetry(delta: number): void {
+    this.telemetrySendTimer += delta;
+    const finished = this.raceManager.state === 'FINISHED';
+    if (this.telemetrySendTimer < (finished ? .25 : .033)) return;
+    this.telemetrySendTimer = 0;
+    const kart = this.localKartPhysics;
+    const p = this.lapManager.getProgress('local_player')!;
+    socketManager.sendTelemetry({
+      position: {x: kart.position.x, y: kart.position.y, z: kart.position.z},
+      rotationY: kart.rotationY, speed: finished ? 0 : kart.speed,
+      driftLevel: kart.drift.getLevel(), pitch: kart.pitch, roll: kart.roll,
+      progress: {lap: p.lap, checkpoint: p.lastPassedCheckpoint, time: p.totalRaceTime, best: p.bestLapTime, finished: p.isFinished}
+    });
+  }
+
   private updateRace(delta: number): void {
     const store = useGameStore.getState();
 
+    if (this.raceManager.state === 'FINISHED') {
+      if (store.raceMode === 'MULTIPLAYER') this.publishTelemetry(delta);
+      return;
+    }
     // 1. Read Inputs (Keyboard & On-Screen Mobile/Tablet Touch Controls)
     const steerLeft = this.keys['ArrowLeft'] || this.keys['KeyA'] || touchControls.steerLeft;
     const steerRight = this.keys['ArrowRight'] || this.keys['KeyD'] || touchControls.steerRight;
@@ -635,24 +701,31 @@ export class GameEngine {
     }
 
     // 4. Update Race Coordinator
-    const raceControl = this.raceManager.update(delta, racerPositions, 'local_player', forward);
+    const raceControl = this.raceManager.update(delta, racerPositions, 'local_player', forward, this.remoteProgress);
+    if (store.raceStatus !== 'FINISHED' && useGameStore.getState().raceStatus === 'FINISHED') {
+      if (store.raceMode === 'MULTIPLAYER') this.publishTelemetry(1);
+      audio.stopEngine();
+      return;
+    }
+
+    this.trackManager.setStartingLights(this.raceManager.countdownValue);
 
     // 5. Local Kart Physics Update & Track Boundary Enforcement
     const activeThrottle = raceControl.canDrive ? throttle : 0;
     const isBrakeOnly = wantsBrake && !wantsReverse;
-    this.localKartPhysics.update(delta, activeThrottle, steer, wantsDrift, wantsNitro, this.localKartVisual, isBrakeOnly);
+    this.localKartPhysics.update(delta, activeThrottle, steer, raceControl.canDrive && wantsDrift, raceControl.canDrive && wantsNitro, this.localKartVisual, isBrakeOnly);
 
     // Car must stay strictly inside the track boundaries at all times
     const constraint = this.trackManager.getTrackConstraint(this.localKartPhysics.position);
     this.localKartPhysics.applyTrackConstraint(constraint, delta, this.localKartVisual);
 
     // 6. Boost Pad Collisions
-    for (const pad of this.trackManager.boostPads) {
-      if (this.localKartPhysics.position.distanceToSquared(pad.position) < 4.0 * 4.0) {
-        audio.playBoost();
-        this.localKartPhysics.boost.trigger('PAD', 1.5, 1.8);
-      }
+    const pad = this.trackManager.boostPads.find(p => p.position.distanceToSquared(this.localKartPhysics.position) < 16);
+    if (pad && pad.mesh !== this.lastPad && raceControl.canDrive) {
+      audio.playBoost();
+      this.localKartPhysics.boost.trigger('PAD', 1.5, 1.8);
     }
+    this.lastPad = pad?.mesh || null;
 
     // 6.1 Update Animated Track Environment (Clouds, Lighthouse Beacon, Collectible Coins)
     this.trackManager.update(delta, this.localKartPhysics.position);
@@ -670,7 +743,7 @@ export class GameEngine {
         });
 
         const aiConstraint = this.trackManager.getTrackConstraint(ai.physics.position);
-        ai.physics.applyTrackConstraint(aiConstraint, delta);
+        ai.physics.applyTrackConstraint(aiConstraint, delta, ai.visual);
       }
     }
 
@@ -678,25 +751,8 @@ export class GameEngine {
     if (store.raceMode === 'MULTIPLAYER') {
       this.networkSync.update(delta);
 
-      this.telemetrySendTimer += delta;
-      if (this.telemetrySendTimer >= 0.033) {
-        this.telemetrySendTimer = 0;
-        if (Math.random() < 0.05) {
-          console.log(`[ENGINE_SEND_TELEMETRY] localId=${socketManager.getLocalPlayerId()}`);
-        }
-        socketManager.sendTelemetry({
-          position: {
-            x: this.localKartPhysics.position.x,
-            y: this.localKartPhysics.position.y,
-            z: this.localKartPhysics.position.z
-          },
-          rotationY: this.localKartPhysics.rotationY,
-          speed: this.localKartPhysics.speed,
-          driftLevel: this.localKartPhysics.drift.getLevel(),
-          pitch: this.localKartPhysics.pitch,
-          roll: this.localKartPhysics.roll
-        });
-      }
+      this.publishTelemetry(delta);
+
     }
 
     // 9. Update Item Boxes, Hazards & Pickups
@@ -753,6 +809,10 @@ export class GameEngine {
     });
 
     // 12. Rock-Solid Third-Person Chase Camera (Zero shake, zero Euler wobble)
+    if (this.raceSun) {
+      this.raceSun.target.position.copy(this.localKartPhysics.position);
+      this.raceSun.position.copy(this.localKartPhysics.position).add(this.sunOffset);
+    }
     this.updateCamera(delta);
   }
 
@@ -818,9 +878,14 @@ export class GameEngine {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
     }
-    window.removeEventListener('resize', this.onResize);
+    this.inputs.abort();
+    this.clearRaceEntities();
+    disposeObjects(this.raceLightsGroup);
+    disposeObjects(this.showroomGroup);
+    this.scene.clear();
     audio.stopEngine();
     this.renderer.dispose();
+    this.renderer.forceContextLoss();
     if (this.renderer.domElement.parentElement) {
       this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
     }

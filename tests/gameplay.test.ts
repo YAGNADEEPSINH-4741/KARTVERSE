@@ -3,6 +3,8 @@
 // ============================================================================
 
 import * as THREE from 'three';
+import assert from 'node:assert/strict';
+import { ItemBoxManager } from '../src/items/ItemBoxManager';
 import { TRACKS } from '../src/tracks/TrackData';
 import { TrackManager } from '../src/tracks/TrackManager';
 import { KartModelFactory } from '../src/vehicles/KartModels';
@@ -78,23 +80,52 @@ async function runGameplayTests() {
   const posMgr = new PositionManager(lapMgr, trackMgr.checkpoints);
 
   lapMgr.registerRacer('player_1', 'Champion');
-  const fwd = new THREE.Vector3(0, 0, 1);
-
-  // Simulate passing checkpoint gates sequentially
-  let totalLapsDone = 0;
-  for (let l = 1; l <= 3; l++) {
-    for (let c = 1; c < trackMgr.checkpoints.length; c++) {
-      const gate = trackMgr.checkpoints[c];
-      lapMgr.updateRacer('player_1', gate.center, gate.tangent, l * 30 + c * 2, true);
-    }
-    // Cross finish line
-    const startGate = trackMgr.checkpoints[0];
-    const res = lapMgr.updateRacer('player_1', startGate.center, startGate.tangent, l * 30 + 50, true);
-    if (res.lapCompleted) totalLapsDone++;
-    if (res.raceCompleted) {
-      console.log(`  ✅ Completed 3-Lap Race! Total laps: ${totalLapsDone}`);
-    }
+  lapMgr.onRaceStart();
+  const startTime = lapMgr.getProgress('player_1')!.lapStartTime;
+  const move = (u: number, time: number) => {
+    const t = THREE.MathUtils.euclideanModulo(u, 1);
+    return lapMgr.updateRacer('player_1', trackMgr.curve.getPointAt(t),
+      trackMgr.curve.getTangentAt(t), startTime + time, true);
+  };
+  move(.995, 0);
+  move(.002, .3);
+  assert.equal(lapMgr.getProgress('player_1')!.nextExpectedCheckpoint, 1);
+  // A jump to the second gate cannot promote a racer past the first.
+  move(.123, .4); move(.126, .5);
+  assert.equal(lapMgr.getProgress('player_1')!.lap, 1);
+  // Reset the validation racer and actually traverse each lap.
+  lapMgr.registerRacer('player_1', 'Champion');
+  lapMgr.onRaceStart();
+  let totalLapsDone = 0, finished = false;
+  for (let i = -2; i <= 3 * 512 + 2; i++) {
+    const event = move(i / 512, 1 + (i + 2) / 512 * 45);
+    if (event.lapCompleted) totalLapsDone++;
+    if (event.raceCompleted) finished = true;
   }
+  assert.equal(totalLapsDone, 3);
+  assert.equal(finished, true);
+  assert.equal(lapMgr.getProgress('player_1')!.lapTimes.length, 3);
+  assert.equal(posMgr.calculateRanks([{id: 'player_1', position: new THREE.Vector3()}])[0].isFinished, true);
+  console.log('  Ordered checkpoint traversal completed three laps and froze the finish.');
+
+  const controls = new KartPhysics();
+  for (let i=0;i<60;i++) controls.update(1/60,1,1,false,false);
+  assert.ok(controls.rotationY > 0);
+  const leftYaw = controls.rotationY;
+  for (let i=0;i<60;i++) controls.update(1/60,1,-1,false,false);
+  assert.ok(controls.rotationY < leftYaw);
+  for (let i=0;i<180;i++) controls.update(1/60,-1,0,false,false,undefined,true);
+  assert.equal(controls.speed,0);
+  for (let i=0;i<60;i++) controls.update(1/60,-1,0,false,false);
+  assert.ok(controls.isReversing && controls.speed < 0);
+  const items = new ItemBoxManager(scene);
+  items.populateTrack(trackMgr.curve,trackMgr.config.itemBoxClusters,trackMgr.config.roadWidth);
+  const firstBox = items.itemBoxes[1];
+  assert.ok(Math.abs(trackMgr.getRoadHeightAt(firstBox.position) + 1.4 - firstBox.position.y) < .1);
+  assert.ok(items.update(.016,[{id:'player_1', position:firstBox.position, isLocalPlayer:true}]).collectedByLocal);
+  assert.equal(firstBox.active,false);
+  items.update(6.1,[]);
+  assert.equal(firstBox.active,true);
 
   // Test 5: Dynamic Item Balancing Pool
   console.log('\n--- Test 5: Power-Up Rubberband Probability Matrix ---');

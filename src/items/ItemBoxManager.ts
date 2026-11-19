@@ -3,6 +3,7 @@
 // ============================================================================
 
 import * as THREE from 'three';
+import { disposeObjects } from '../game/disposeObjects';
 import { PowerUpType, ItemManager, POWER_UPS } from './PowerUpSystem';
 import { audio } from '../audio/AudioManager';
 
@@ -58,9 +59,9 @@ export class ItemBoxManager {
 
     for (const clusterIdx of clusterIndices) {
       // Calculate normalized curve t from index
-      const t = Math.min(Math.max(clusterIdx / 10, 0.05), 0.95);
-      const center = curve.getPointAt(t);
-      const tangent = curve.getTangentAt(t).normalize();
+      const t = clusterIdx / curve.points.length;
+      const center = curve.getPoint(t);
+      const tangent = curve.getTangent(t).normalize();
       const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
 
       // Place 3 item boxes across the road width (-roadWidth/3, 0, roadWidth/3)
@@ -185,6 +186,7 @@ export class ItemBoxManager {
           if (kart.isLocalPlayer) localHitHazard = true;
 
           // Remove consumed oil slick
+          disposeObjects(hazard.mesh);
           this.container.remove(hazard.mesh);
           this.hazards.splice(i, 1);
           break;
@@ -192,8 +194,9 @@ export class ItemBoxManager {
       }
 
       // Expire old hazards
-      if (hazard.lifetime <= 0) {
-        this.container.remove(hazard.mesh);
+      if (hazard.lifetime <= 0 && this.hazards[i] === hazard) {
+        disposeObjects(hazard.mesh);
+          this.container.remove(hazard.mesh);
         this.hazards.splice(i, 1);
       }
     }
@@ -225,6 +228,7 @@ export class ItemBoxManager {
           if (kart.isLocalPlayer) localHitHazard = true;
 
           // Destroy projectile on impact
+          disposeObjects(proj.mesh);
           this.container.remove(proj.mesh);
           this.projectiles.splice(i, 1);
           break;
@@ -232,7 +236,8 @@ export class ItemBoxManager {
       }
 
       if (proj.lifetime <= 0 && this.projectiles[i] === proj) {
-        this.container.remove(proj.mesh);
+        disposeObjects(proj.mesh);
+          this.container.remove(proj.mesh);
         this.projectiles.splice(i, 1);
       }
     }
@@ -243,7 +248,7 @@ export class ItemBoxManager {
   // Deploy an Oil Slick behind a kart
   public spawnOilTrap(position: THREE.Vector3, direction: THREE.Vector3, ownerId: string): void {
     const dropPos = position.clone().addScaledVector(direction, -3.0);
-    dropPos.y = 0.05;
+    dropPos.y = position.y - .14;
 
     const geo = new THREE.CircleGeometry(2.0, 16);
     const mat = new THREE.MeshStandardMaterial({
@@ -323,6 +328,7 @@ export class ItemBoxManager {
   }
 
   public clear(): void {
+    disposeObjects(this.container);
     while (this.container.children.length > 0) {
       this.container.remove(this.container.children[0]);
     }

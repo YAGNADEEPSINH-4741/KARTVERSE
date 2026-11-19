@@ -29,40 +29,45 @@ export interface RaceResultPayload {
   laps?: number;
 }
 
+// The historic coast has different geometry. Its times belong to a separate record book.
+const recordTrackId = (id: string) =>
+  id === 'sunset_coast' ? 'sunset_island_v1' : id;
+
 export class LeaderboardService {
-  public static async getTrackLeaderboard(trackId: string, limit = 10): Promise<LeaderboardEntry[]> {
+  public static async getTrackLeaderboard(
+    trackId: string,
+    limit = 10,
+  ): Promise<LeaderboardEntry[]> {
+    const { data, error } = await supabase
+      .from('race_results')
+      .select(
+        'id,track_id,completion_time,position,race_date,profiles(username,selected_kart)',
+      )
+      .eq('track_id', recordTrackId(trackId))
+      .gt('completion_time', 0)
+      .order('completion_time', { ascending: true })
+      .limit(limit);
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      ...row,
+      username: row.profiles?.username || 'Guest driver',
+      kart_id: row.profiles?.selected_kart,
+      finish_time: row.completion_time,
+    }));
+  }
+
+  public static getDeviceLeaderboard(
+    trackId: string,
+    limit = 10,
+  ): LeaderboardEntry[] {
     try {
-      const { data, error } = await supabase
-        .from('race_results')
-        .select(`
-          id,
-          track_id,
-          completion_time,
-          position,
-          race_date,
-          profiles ( username, selected_kart )
-        `)
-        .eq('track_id', trackId)
-        .order('completion_time', { ascending: true })
-        .limit(limit);
-
-      if (error || !data || data.length === 0) {
-        return this.getFallbackLeaderboard(trackId);
-      }
-
-      return data.map((d: any) => ({
-        id: d.id,
-        username: d.profiles?.username || 'Ace Racer',
-        track_id: d.track_id,
-        completion_time: d.completion_time,
-        finish_time: d.completion_time,
-        best_lap_time: d.completion_time / 3,
-        position: d.position,
-        kart_id: d.profiles?.selected_kart || 'speed_demon',
-        race_date: d.race_date
-      }));
+      const records: LeaderboardEntry[] = JSON.parse(
+        localStorage.getItem('kartverse_records_' + recordTrackId(trackId)) ||
+          '[]',
+      );
+      return Array.isArray(records) ? records.slice(0, limit) : [];
     } catch {
-      return this.getFallbackLeaderboard(trackId);
+      return [];
     }
   }
 
@@ -71,7 +76,7 @@ export class LeaderboardService {
     arg2?: string,
     arg3?: number,
     arg4?: number,
-    arg5?: number
+    arg5?: number,
   ): Promise<number> {
     let userId: string;
     let trackId: string;
@@ -95,46 +100,42 @@ export class LeaderboardService {
 
     const xpEarned = Math.max(50, Math.round(500 / position));
 
+    const record: LeaderboardEntry = {
+      id:
+        globalThis.crypto?.randomUUID?.() ||
+        Date.now() + '-' + Math.random().toString(36).slice(2),
+      username:
+        typeof arg1 === 'object'
+          ? arg1.username || 'Guest driver'
+          : 'Guest driver',
+      track_id: recordTrackId(trackId),
+      completion_time: completionTime,
+      position,
+      best_lap_time: typeof arg1 === 'object' ? arg1.bestLapTime : undefined,
+      kart_id:
+        typeof arg1 === 'object' ? arg1.kartId || 'speed_demon' : 'speed_demon',
+      race_date: new Date().toISOString(),
+    };
     try {
-      await supabase.from('race_results').insert({
-        user_id: userId,
-        track_id: trackId,
-        position,
-        completion_time: completionTime,
-        laps,
-        xp_earned: xpEarned
-      });
+      const records = [...this.getDeviceLeaderboard(trackId, 30), record];
+      records.sort((a, b) => a.completion_time - b.completion_time);
+      localStorage.setItem(
+        'kartverse_records_' + record.track_id,
+        JSON.stringify(records.slice(0, 30)),
+      );
     } catch {
-      // Local fallback
+      // Storage is optional in private and embedded browsers.
     }
 
-    return xpEarned;
-  }
-
-  private static getFallbackLeaderboard(trackId: string): LeaderboardEntry[] {
-    const aiMocks = [
-      { name: 'Apex Predator', kart: 'speed_demon', offset: 0 },
-      { name: 'Drift Queen', kart: 'hyper_drift', offset: 1.4 },
-      { name: 'Cyber Phantom', kart: 'cyber_glider', offset: 2.8 },
-      { name: 'Vortex Striker', kart: 'vortex_striker', offset: 4.2 },
-      { name: 'Sonic Bolt', kart: 'quantum_leap', offset: 5.6 }
-    ];
-
-    const baseTime = trackId === 'sunset_coast' ? 78.5 : trackId === 'neon_city' ? 84.2 : 92.0;
-
-    return aiMocks.map((ai, index) => {
-      const time = baseTime + ai.offset;
-      return {
-        id: `mock_${index}`,
-        username: ai.name,
-        track_id: trackId,
-        completion_time: time,
-        finish_time: time,
-        best_lap_time: (time / 3) * 0.96,
-        position: index + 1,
-        kart_id: ai.kart,
-        race_date: new Date().toISOString()
-      };
+    const { error } = await supabase.from('race_results').insert({
+      user_id: userId,
+      track_id: record.track_id,
+      position,
+      completion_time: completionTime,
+      laps,
+      xp_earned: xpEarned,
     });
+    if (error) console.warn('Cloud race result was not saved:', error.code);
+    return xpEarned;
   }
 }

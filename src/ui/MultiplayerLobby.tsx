@@ -1,363 +1,226 @@
-// ============================================================================
-// KARTVERSE — Real-Time Multiplayer Lobby Screen
-// Room Creation, 6-Char Code Joining, Player Roster, Ready State
-// Host Track Card Selection with Real-Time Multi-Client Sync
-// ============================================================================
-
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Check, Copy, Flag, LogOut, Plus, Users } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { socketManager } from '../multiplayer/SocketManager';
-import { audio } from '../audio/AudioManager';
 import { TRACKS } from '../tracks/TrackData';
+import { Page, RouteMap, navigate } from './Interface';
 
-export const MultiplayerLobby: React.FC = () => {
-  const setScreen = useGameStore(state => state.setScreen);
-  const setRaceMode = useGameStore(state => state.setRaceMode);
-  const profile = useGameStore(state => state.profile);
-  const selectedKart = useGameStore(state => state.selectedKart);
-  const kartColor = useGameStore(state => state.kartColor);
-  const selectedTrack = useGameStore(state => state.selectedTrack);
-  const setSelectedTrack = useGameStore(state => state.setSelectedTrack);
-
-  const roomCode = useGameStore(state => state.roomCode);
-  const isHost = useGameStore(state => state.isHost);
-  const roomPlayers = useGameStore(state => state.roomPlayers);
-
-  const [inputCode, setInputCode] = useState('');
-  const [isReady, setIsReady] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopyCode = () => {
-    if (roomCode) {
-      navigator.clipboard.writeText(roomCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleCreateRoom = async () => {
-    try {
-      setLoading(true);
-      setErrorMsg(null);
-      audio.playMenuClick();
-      await socketManager.createRoom(profile.username, selectedKart, kartColor);
-      setRaceMode('MULTIPLAYER');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to create room');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleJoinRoom = async () => {
-    const cleanCode = inputCode.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-    if (!cleanCode) {
-      setErrorMsg('Please enter a room code (e.g. KV8F2A)');
+export const MultiplayerLobby = () => {
+  const {
+    roomCode,
+    isHost,
+    roomPlayers,
+    profile,
+    selectedKart,
+    kartColor,
+    selectedTrack,
+    setRaceMode,
+    setScreen,
+  } = useGameStore();
+  const [code, setCode] = useState(''),
+    [error, setError] = useState(''),
+    [busy, setBusy] = useState(false),
+    [copied, setCopied] = useState(false);
+  const local = roomPlayers.find(
+    (p) => p.id === socketManager.getLocalPlayerId(),
+  );
+  const track = TRACKS[selectedTrack] || TRACKS.sunset_coast;
+  function leave() {
+    void socketManager.leaveRace();
+  }
+  async function enter(host: boolean) {
+    setError('');
+    if (!host && code.length !== 6) {
+      setError('Enter the six-character room code.');
       return;
     }
+    setBusy(true);
     try {
-      setLoading(true);
-      setErrorMsg(null);
-      audio.playMenuClick();
-      await socketManager.joinRoom(cleanCode, profile.username, selectedKart, kartColor);
+      if (host)
+        await socketManager.createRoom(
+          profile.username,
+          selectedKart,
+          kartColor,
+        );
+      else
+        await socketManager.joinRoom(
+          code,
+          profile.username,
+          selectedKart,
+          kartColor,
+        );
       setRaceMode('MULTIPLAYER');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to join room');
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Could not connect to the room.',
+      );
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
-
-  const handleToggleReady = () => {
-    audio.playMenuClick();
-    const next = !isReady;
-    setIsReady(next);
-    socketManager.toggleReady(next);
-  };
-
-  const handleSelectTrack = (trackId: string) => {
-    if (!isHost) return;
-    audio.playMenuClick();
-    setSelectedTrack(trackId);
-    socketManager.setTrack(trackId);
-  };
-
-  const handleStartRace = () => {
-    audio.playMenuClick();
-    socketManager.startRace();
-    setRaceMode('MULTIPLAYER');
-    // Allow brief dispatch window for broadcast packets before local screen transition
-    setTimeout(() => {
-      setScreen('QUICK_RACE');
-    }, 80);
-  };
-
-  const handleLeaveRoom = () => {
-    audio.playMenuClick();
-    socketManager.disconnect();
-    useGameStore.getState().setRoomCode(null);
-    setScreen('MENU');
-  };
-
-  const currentTrackData = TRACKS[selectedTrack] || TRACKS.sunset_coast;
-
+  }
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopied(true);
+    } catch {
+      setError('Select the room code to copy it.');
+    }
+  }
+  useEffect(() => {
+    if (copied) {
+      const id = setTimeout(() => setCopied(false), 1500);
+      return () => clearTimeout(id);
+    }
+  }, [copied]);
   return (
-    <div className="relative w-full h-full flex flex-col justify-between p-6 md:p-10 z-10 select-none overflow-y-auto bg-blue-950/95 backdrop-blur-md">
-      {/* Header */}
-      <div className="flex justify-between items-center w-full">
-        <div>
-          <button
-            onClick={handleLeaveRoom}
-            className="text-xs uppercase font-bold text-sky-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer mb-1.5"
-          >
-            ← BACK TO MENU
-          </button>
-          <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-amber-300">
-            ONLINE MULTIPLAYER
-          </h1>
-        </div>
-
-        {roomCode && (
-          <div className="flex items-center gap-3 bg-blue-900/60 border-2 border-cyan-400/60 px-5 py-2.5 rounded-2xl shadow-[0_0_20px_rgba(0,240,255,0.3)]">
-            <span className="text-xs uppercase font-extrabold text-cyan-300">ROOM CODE:</span>
-            <span className="text-2xl font-mono font-black text-amber-300 tracking-widest">
-              {roomCode}
-            </span>
+    <Page
+      title={roomCode ? 'Race room' : 'Multiplayer'}
+      eyebrow="Private grid"
+      beforeNavigate={leave}
+    >
+      {error && (
+        <p className="notice" role="alert">
+          {error}
+        </p>
+      )}
+      {!roomCode ? (
+        <div className="lobby-grid">
+          <section className="panel">
+            <Users className="section-icon" />
+            <h2>Host a race</h2>
+            <p>
+              Choose a circuit and share your six-character room code with the
+              other drivers.
+            </p>
             <button
-              onClick={handleCopyCode}
-              className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-slate-950 uppercase transition-all cursor-pointer"
-              title="Copy Room Code"
+              className="btn primary"
+              disabled={busy}
+              onClick={() => enter(true)}
             >
-              {copied ? '✓ COPIED' : '📋 COPY'}
+              <Plus size={17} /> Create room
             </button>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content Area */}
-      <div className="my-auto max-w-5xl w-full mx-auto py-4">
-        {errorMsg && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-950/70 border border-amber-500 text-amber-200 text-sm font-semibold">
-            {errorMsg}
-          </div>
-        )}
-
-        {!roomCode ? (
-          // Room Entry Options (Create or Join)
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Create Room Card */}
-            <div className="p-8 rounded-3xl bg-blue-950/80 border border-cyan-500/40 backdrop-blur-md shadow-2xl flex flex-col justify-between">
-              <div>
-                <span className="text-4xl">👑</span>
-                <h2 className="text-2xl font-black italic text-white mt-4">HOST A RACE</h2>
-                <p className="text-sm text-sky-200/80 mt-2">
-                  Generate a private 6-character room code. Choose the track and invite friends or rivals!
-                </p>
-              </div>
-
+          </section>
+          <form
+            className="panel"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void enter(false);
+            }}
+          >
+            <Flag className="section-icon" />
+            <h2>Join the grid</h2>
+            <label htmlFor="room-code">Room code</label>
+            <input
+              id="room-code"
+              autoComplete="off"
+              value={code}
+              maxLength={8}
+              placeholder="KV8F2A"
+              onChange={(e) =>
+                setCode(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, '')
+                    .slice(0, 6),
+                )
+              }
+            />
+            <button className="btn secondary" disabled={busy}>
+              Join room
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div className="lobby-grid">
+          <section className="panel">
+            <p className="eyebrow">Room code</p>
+            <div className="code-row">
+              <strong data-room-code>{roomCode}</strong>
               <button
-                onClick={handleCreateRoom}
-                disabled={loading}
-                className="mt-8 w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black italic text-lg tracking-wider uppercase shadow-[0_0_25px_rgba(0,240,255,0.4)] transition-all cursor-pointer disabled:opacity-50"
+                className="icon-button"
+                aria-label="Copy room code"
+                onClick={copy}
               >
-                {loading ? 'CREATING ROOM...' : 'CREATE ROOM'}
+                {copied ? <Check /> : <Copy />}
               </button>
             </div>
-
-            {/* Join Room Card */}
-            <div className="p-8 rounded-3xl bg-blue-950/80 border border-sky-500/40 backdrop-blur-md shadow-2xl flex flex-col justify-between">
-              <div>
-                <span className="text-4xl">🔑</span>
-                <h2 className="text-2xl font-black italic text-white mt-4">JOIN A RACE</h2>
-                <p className="text-sm text-sky-200/80 mt-2">
-                  Enter a 6-character room code provided by the host.
-                </p>
-
-                <div className="mt-6">
-                  <input
-                    type="text"
-                    maxLength={8}
-                    value={inputCode}
-                    onChange={(e) => setInputCode(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase())}
-                    placeholder="ENTER CODE (E.G. KV9A1B)"
-                    className="w-full bg-blue-950 border-2 border-cyan-500/50 focus:border-cyan-400 rounded-xl px-5 py-4 text-center font-mono text-2xl font-black tracking-widest text-cyan-300 placeholder:text-sky-700 focus:outline-none"
+            <h2>
+              Starting grid <small>{roomPlayers.length} / 8</small>
+            </h2>
+            <ul className="roster">
+              {roomPlayers.map((p) => (
+                <li key={p.id}>
+                  <span
+                    className="driver-dot"
+                    style={{ background: p.kartColor }}
                   />
-                </div>
-              </div>
-
-              <button
-                onClick={handleJoinRoom}
-                disabled={loading}
-                className="mt-8 w-full py-4 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black italic text-lg tracking-wider uppercase shadow-[0_0_25px_rgba(14,165,233,0.4)] transition-all cursor-pointer disabled:opacity-50"
-              >
-                {loading ? 'CONNECTING...' : 'JOIN ROOM'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          // In-Room Lobby Roster & Track Selection
-          <div className="bg-blue-950/90 backdrop-blur-md border border-blue-900/80 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
-            {/* Header: Racers in Lobby */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-4 border-b border-blue-900/80">
-              <div>
-                <h2 className="text-2xl font-black italic text-white flex items-center gap-2">
-                  <span>RACERS IN LOBBY</span>
-                  <span className="text-cyan-400 font-mono text-lg font-bold">({roomPlayers.length} / 8)</span>
-                </h2>
-                <p className="text-xs text-sky-300/80">
-                  {isHost ? 'You are the Host! Choose a track below and start when racers are ready.' : 'Waiting for the host to select track and launch race.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Players Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              {roomPlayers.map((player) => (
-                <div
-                  key={player.id}
-                  className="p-3.5 rounded-2xl bg-blue-900/40 border border-blue-800/80 flex items-center justify-between shadow-inner"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shadow-md text-white"
-                      style={{ backgroundColor: player.kartColor || '#0284c7' }}
-                    >
-                      🏎️
-                    </div>
-                    <div>
-                      <div className="text-sm font-extrabold text-white flex items-center gap-1">
-                        <span className="truncate max-w-[90px]">{player.username}</span>
-                        {player.isHost && <span className="text-xs text-amber-400" title="Host">👑</span>}
-                      </div>
-                      <div className="text-[10px] text-sky-300 uppercase font-semibold">
-                        {player.kartId.replace('_', ' ')}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                    player.isHost
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
-                      : player.isReady 
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
-                        : 'bg-blue-900/60 text-sky-400 border border-blue-800'
-                  }`}>
-                    {player.isHost ? 'HOST' : (player.isReady ? 'READY' : 'WAITING')}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Interactive Track Selection Cards */}
-            <div className="pt-2">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-cyan-400">
-                    {isHost ? '🎮 HOST TRACK SELECTION (CLICK TO SELECT)' : '🗺️ HOST SELECTED TRACK'}
+                  <strong>{p.username}</strong>
+                  <span className={p.isReady ? 'ready' : ''}>
+                    {p.isHost ? 'Host' : p.isReady ? 'Ready' : 'Waiting'}
                   </span>
-                  {!isHost && (
-                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 text-[9px] font-bold animate-pulse">
-                      LIVE SYNC
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-sky-300 font-mono">
-                  Current: <strong className="text-white">{currentTrackData.name}</strong> ({currentTrackData.laps} Laps)
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                {Object.values(TRACKS).map((t) => {
-                  const isSelected = t.id === selectedTrack;
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={() => handleSelectTrack(t.id)}
-                      className={`relative p-3 rounded-2xl transition-all duration-200 border-2 text-left ${
-                        isHost ? 'cursor-pointer transform hover:-translate-y-1' : 'cursor-default'
-                      } ${
-                        isSelected
-                          ? 'bg-gradient-to-b from-cyan-950/90 to-blue-950/90 border-cyan-400 shadow-[0_0_25px_rgba(0,240,255,0.45)] ring-2 ring-cyan-400/40'
-                          : 'bg-blue-950/60 border-blue-900/80 hover:border-cyan-500/40 opacity-80 hover:opacity-100'
-                      }`}
-                    >
-                      {/* Theme Icon & Difficulty */}
-                      <div className="flex justify-between items-start mb-1.5">
-                        <span className="text-xl">
-                          {t.theme === 'BEACH' ? '🏝️' : t.theme === 'CYBER' ? '🌆' : t.theme === 'FOREST' ? '🌲' : t.theme === 'LAVA' ? '🌋' : '❄️'}
-                        </span>
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
-                          t.difficulty === 'EASY' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
-                          t.difficulty === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40' :
-                          'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        }`}>
-                          {t.difficulty}
-                        </span>
-                      </div>
-
-                      <div className="font-black italic text-sm text-white truncate">
-                        {t.name}
-                      </div>
-                      <p className="text-[10px] text-sky-200/70 line-clamp-2 mt-0.5 min-h-[30px]">
-                        {t.tagline}
-                      </p>
-
-                      <div className="flex justify-between items-center mt-2 pt-1.5 border-t border-blue-900/80 text-[9px] text-sky-300 font-bold">
-                        <span>{t.laps} LAPS</span>
-                        {isSelected && (
-                          <span className="text-cyan-400 font-black animate-pulse">✓ ACTIVE</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Action Bar */}
-            <div className="flex justify-between items-center pt-4 border-t border-blue-900/80">
+                </li>
+              ))}
+            </ul>
+            {isHost ? (
               <button
-                onClick={handleLeaveRoom}
-                className="px-5 py-2.5 rounded-xl bg-blue-900/60 hover:bg-blue-800 text-sky-200 font-bold text-xs uppercase transition-colors cursor-pointer"
+                className="btn primary"
+                disabled={
+                  busy ||
+                  roomPlayers.length < 2 ||
+                  roomPlayers.some((p) => !p.isReady)
+                }
+                onClick={() => {
+                  socketManager.startRace();
+                  setRaceMode('MULTIPLAYER');
+                  setScreen('QUICK_RACE');
+                }}
               >
-                LEAVE ROOM
+                <Flag size={17} /> Start race
               </button>
-
-              <div className="flex items-center gap-3">
-                {/* Non-Host Players: Toggle Ready Status */}
-                {!isHost && (
-                  <button
-                    onClick={handleToggleReady}
-                    className={`px-6 py-3 rounded-xl font-black italic tracking-wider text-sm uppercase transition-all cursor-pointer ${
-                      isReady
-                        ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-[0_0_20px_rgba(217,119,6,0.4)]'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]'
-                    }`}
-                  >
-                    {isReady ? 'UNREADY' : 'SET READY'}
-                  </button>
-                )}
-
-                {/* Host: Sole Authority to Launch Race */}
-                {isHost && (
-                  <button
-                    onClick={handleStartRace}
-                    className="px-7 py-3 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black italic tracking-wider text-sm uppercase shadow-[0_0_25px_rgba(245,158,11,0.5)] transition-all cursor-pointer active:scale-95"
-                  >
-                    START RACE 🏁
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="text-center text-xs text-sky-400/60">
-        Kartverse Authoritative Multiplayer Engine • 20Hz Real-Time Synchronization
-      </div>
-    </div>
+            ) : (
+              <button
+                className="btn primary"
+                onClick={() => socketManager.toggleReady(!local?.isReady)}
+              >
+                <Check size={17} />
+                {local?.isReady ? 'Cancel ready' : 'Set ready'}
+              </button>
+            )}
+            <button
+              className="back"
+              onClick={() => {
+                leave();
+                navigate('MENU');
+              }}
+            >
+              <LogOut size={15} /> Leave room
+            </button>
+          </section>
+          <section className="panel room-track">
+            <RouteMap track={track} />
+            <h2>{track.name}</h2>
+            <p>{track.tagline}</p>
+            {isHost ? (
+              <>
+                <label htmlFor="room-track">Circuit</label>
+                <select
+                  id="room-track"
+                  value={track.id}
+                  onChange={(e) => socketManager.setTrack(e.target.value)}
+                >
+                  {Object.values(TRACKS).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <p>The host selects the circuit and starts the race.</p>
+            )}
+          </section>
+        </div>
+      )}
+    </Page>
   );
 };

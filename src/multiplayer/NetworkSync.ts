@@ -96,7 +96,7 @@ export class NetworkSync {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
 
-    const displayName = (isHost ? '👑 ' : '🏎️ ') + (name.length > 14 ? name.substring(0, 14) + '…' : name);
+    const displayName = (isHost ? 'HOST · ' : '') + (name.length > 14 ? name.substring(0, 14) + '…' : name);
     ctx.fillText(displayName, 256, 64);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -149,8 +149,7 @@ export class NetworkSync {
 
       // 3. Rotation lerp with angle wrap handling
       let diff = entity.targetRotationY - entity.currentRotationY;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       entity.currentRotationY += diff * lerpRate;
       entity.visual.group.rotation.y = entity.currentRotationY;
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import assert from 'node:assert/strict';
 import { TrackManager } from '../src/tracks/TrackManager';
 import { KartPhysics } from '../src/vehicles/KartPhysics';
 
@@ -68,3 +69,28 @@ console.log('✅ Out-of-bounds auto-rescue verified.');
 
 console.log('🎉 ALL TRACK BOUNDARY & BARRIER TESTS PASSED (3/3)!');
 
+
+// Compare the actual rendered top face to the custom physics surface on both sides of every sector.
+track.trackGroup.updateMatrixWorld(true);
+const ray = new THREE.Raycaster();
+const down = new THREE.Vector3(0, -1, 0);
+for (let i = 0; i < 192; i++) {
+  const t = (i + .37) / 192;
+  const p = track.curve.getPointAt(t), tan = track.curve.getTangentAt(t);
+  const normal = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+  for (const lateral of [-7.3, -.3, 7.3]) {
+    const origin = p.clone().addScaledVector(normal, lateral);
+    origin.y += 3;
+    ray.set(origin, down);
+    const hit = ray.intersectObject(track.roadMesh, false)[0];
+    assert.ok(hit, `Missing visual road at station ${i}, lateral ${lateral}`);
+    const surface = track.getTrackConstraint(hit.point);
+    assert.ok(surface.isOnRoad);
+    assert.ok(Math.abs(surface.roadElevation - hit.point.y) < .12,
+      `Height differs at station ${i}: ${surface.roadElevation} / ${hit.point.y}`);
+  }
+}
+const slots = track.getStartingGrid();
+for (const slot of slots) assert.ok(track.getTrackConstraint(slot.position).isOnRoad);
+for (let i = 1; i < slots.length; i++) assert.ok(slots[i].position.distanceTo(slots[i-1].position) > 3);
+console.log('Verified 576 rendered road samples against physics, plus all eight starting slots.');
