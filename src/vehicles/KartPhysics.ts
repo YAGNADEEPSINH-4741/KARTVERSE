@@ -38,6 +38,7 @@ export class KartPhysics {
 
   public isSpinningOut = false;
   public spinoutTimer = 0;
+  private shieldTime = 0;
   public latestBoostName: string | null = null;
 
   constructor(specs?: Partial<KartSpecs>) {
@@ -59,6 +60,7 @@ export class KartPhysics {
     visual?: KartVisual,
     isBrakeOnly = false
   ): void {
+    this.shieldTime = Math.max(0, this.shieldTime - delta);
     // 1. Handle spinout recovery
     if (this.isSpinningOut) {
       this.spinoutTimer -= delta;
@@ -226,7 +228,15 @@ export class KartPhysics {
     audio.updateKartEngine(Math.abs(this.speed) / this.specs.topSpeed, this.speed >= 0 ? 1 : 0);
   }
 
+  public activateShield(): void {
+    this.shieldTime = 8;
+  }
+
   public triggerSpinout(): void {
+    if (this.shieldTime > 0) {
+      this.shieldTime = 0;
+      return;
+    }
     if (this.isSpinningOut) return;
     this.isSpinningOut = true;
     this.spinoutTimer = 1.2;

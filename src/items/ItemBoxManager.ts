@@ -117,7 +117,7 @@ export class ItemBoxManager {
 
   public update(
     delta: number,
-    kartPositions: { id: string; position: THREE.Vector3; onHit?: () => void; isLocalPlayer?: boolean }[]
+    kartPositions: { id: string; position: THREE.Vector3; onHit?: () => void; isLocalPlayer?: boolean; canCollect?: boolean; rank?: number; onCollect?: (item: PowerUpType) => void }[]
   ): { collectedByLocal: PowerUpType | null; localHitHazard: boolean } {
     let collectedByLocal: PowerUpType | null = null;
     let localHitHazard = false;
@@ -135,6 +135,7 @@ export class ItemBoxManager {
 
         // Check pickup collisions with all karts
         for (const kart of kartPositions) {
+          if (kart.canCollect === false) continue;
           const distSq = box.position.distanceToSquared(kart.position);
           if (distSq < 3.8 * 3.8) {
             // Picked up!
@@ -142,10 +143,11 @@ export class ItemBoxManager {
             box.respawnTimer = 6.0; // 6 second respawn
             box.group.visible = false;
 
+            const item = ItemManager.getRandomItem(kart.rank ?? 3, kartPositions.length);
+            kart.onCollect?.(item);
             if (kart.isLocalPlayer) {
               audio.playItemCollect();
-              // Assign a random power-up based on position (defaulting to 3rd place weighting)
-              collectedByLocal = ItemManager.getRandomItem(3, 8);
+              collectedByLocal = item;
             }
             break;
           }

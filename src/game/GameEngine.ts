@@ -71,7 +71,7 @@ export class GameEngine {
 
   // Telemetry send throttle (multiplayer 20Hz)
   private telemetrySendTimer = 0;
-  private lastPad: THREE.Mesh | null = null;
+  private readonly lastPads = new Map<KartPhysics, THREE.Mesh>();
   private inputs = new AbortController();
   private remoteProgress = new Set<string>();
 
@@ -444,7 +444,7 @@ export class GameEngine {
     store.setTelemetry({currentLap: 1, totalLaps: this.trackManager.config.laps, totalRacers: this.lapManager.progressMap.size,
       position: localIndex + 1, bestLapTime: 0, raceTime: 0, currentItem: null, speedKmh: 0, isWrongWay: false,
       driftLevel: 0, nitroPercent: 100, miniTurboNotification: null, leaderboard: [], racerPositions: []});
-    this.lastPad = null;
+    this.lastPads.clear();
     // 6. Start Countdown
     this.raceManager.startCountdown();
   }
@@ -535,41 +535,58 @@ export class GameEngine {
     const item = store.telemetry.currentItem as PowerUpType | null;
     if (!item) return;
 
-    const fwd = new THREE.Vector3(
-      Math.sin(this.localKartPhysics.rotationY),
-      0,
-      Math.cos(this.localKartPhysics.rotationY)
-    );
-
     store.setTelemetry({ currentItem: null });
+    const kart = this.localKartPhysics;
+    const forward = new THREE.Vector3(Math.sin(kart.rotationY), 0, Math.cos(kart.rotationY));
+    const target = this.raceManager.ranks
+      .filter(rank => !rank.isFinished && rank.id !== 'local_player')
+      .map(rank => this.aiRacers.find(ai => ai.profile.id === rank.id))
+      .find(ai => ai && ai.physics.position.clone().sub(kart.position).dot(forward) > 0);
+    this.activatePowerUp(item, 'local_player', kart, target?.physics.position);
+    if (store.raceMode === 'MULTIPLAYER' && (item === 'OIL_TRAP' || item === 'HOMING_ORB')) {
+      socketManager.sendItemUse(item, kart.position, forward);
+    }
+  }
 
-    if (item === 'ROCKET_BOOST' || item === 'TURBO_CHARGE') {
-      audio.playBoost();
-      this.localKartPhysics.boost.trigger('NITRO', 1.6, 2.5);
-    } else if (item === 'SHIELD') {
-      audio.playItemCollect();
-      this.localKartPhysics.boost.trigger('PAD', 1.1, 8.0);
-    } else if (item === 'OIL_TRAP') {
-      audio.playItemCollect();
-      this.itemBoxManager.spawnOilTrap(this.localKartPhysics.position, fwd, 'local_player');
-      if (store.raceMode === 'MULTIPLAYER') {
-        socketManager.sendItemUse('OIL_TRAP', this.localKartPhysics.position, fwd);
-      }
-    } else if (item === 'HOMING_ORB') {
-      audio.playItemCollect();
-      const leadPos = this.aiRacers.length > 0 ? this.aiRacers[0].physics.position : undefined;
-      this.itemBoxManager.spawnProjectile(this.localKartPhysics.position, fwd, 'HOMING_ORB', 'local_player', leadPos);
-      if (store.raceMode === 'MULTIPLAYER') {
-        socketManager.sendItemUse('HOMING_ORB', this.localKartPhysics.position, fwd);
-      }
-    } else if (item === 'LIGHTNING_PULSE') {
-      audio.playSpinout();
-      this.aiRacers.forEach(ai => ai.hitByHazard());
-    } else if (item === 'SPEED_MAGNET') {
-      audio.playBoost();
-      this.localKartPhysics.boost.trigger('MINI_TURBO', 1.8, 3.0);
-    } else {
-      this.localKartPhysics.boost.trigger('NITRO', 1.4, 2.0);
+  private activatePowerUp(item: PowerUpType, ownerId: string, kart: KartPhysics, target?: THREE.Vector3): void {
+    const direction = new THREE.Vector3(Math.sin(kart.rotationY), 0, Math.cos(kart.rotationY));
+    switch (item) {
+      case 'ROCKET_BOOST':
+      case 'TURBO_CHARGE':
+        kart.boost.trigger('NITRO', 1.6, 2.5);
+        break;
+      case 'SPEED_MAGNET':
+        kart.boost.trigger('MINI_TURBO', 1.8, 3);
+        break;
+      case 'MYSTERY_BOX':
+        kart.boost.trigger('NITRO', 1.4, 2);
+        break;
+      case 'SHIELD':
+        kart.activateShield();
+        break;
+      case 'OIL_TRAP':
+        this.itemBoxManager.spawnOilTrap(kart.position, direction, ownerId);
+        break;
+      case 'HOMING_ORB':
+        this.itemBoxManager.spawnProjectile(kart.position, direction, 'HOMING_ORB', ownerId, target);
+        break;
+      case 'LIGHTNING_PULSE':
+        if (ownerId !== 'local_player') this.localKartPhysics.triggerSpinout();
+        for (const ai of this.aiRacers) {
+          if (ai.profile.id !== ownerId && !this.lapManager.getProgress(ai.profile.id)?.isFinished) ai.hitByHazard();
+        }
+        break;
+    }
+  }
+
+  private checkBoostPad(kart: KartPhysics): void {
+    const pad = this.trackManager.boostPads.find(p => p.position.distanceToSquared(kart.position) < 16);
+    if (!pad) {
+      this.lastPads.delete(kart);
+    } else if (this.lastPads.get(kart) !== pad.mesh) {
+      kart.boost.trigger('PAD', 1.5, 1.8);
+      this.lastPads.set(kart, pad.mesh);
+      if (kart === this.localKartPhysics) audio.playBoost();
     }
   }
 
@@ -729,31 +746,29 @@ export class GameEngine {
     const constraint = this.trackManager.getTrackConstraint(this.localKartPhysics.position);
     this.localKartPhysics.applyTrackConstraint(constraint, delta, this.localKartVisual);
 
-    // 6. Boost Pad Collisions
-    const pad = this.trackManager.boostPads.find(p => p.position.distanceToSquared(this.localKartPhysics.position) < 16);
-    if (pad && pad.mesh !== this.lastPad && raceControl.canDrive) {
-      audio.playBoost();
-      this.localKartPhysics.boost.trigger('PAD', 1.5, 1.8);
-    }
-    this.lastPad = pad?.mesh || null;
-
-    // 6.1 Update Animated Track Environment (Clouds, Lighthouse Beacon, Collectible Coins)
+    if (raceControl.canDrive) this.checkBoostPad(this.localKartPhysics);
     this.trackManager.update(delta, this.localKartPhysics.position);
 
-    // 7. Update AI Racers
-    for (const ai of this.aiRacers) {
-      if (raceControl.canDrive) {
-        const signedDist = this.localKartPhysics.position.z - ai.physics.position.z;
-        ai.update(delta, this.localKartPhysics.position, signedDist, (itemType, pos, dir) => {
-          if (itemType === 'OIL_TRAP') {
-            this.itemBoxManager.spawnOilTrap(pos, dir, ai.profile.id);
-          } else if (itemType === 'HOMING_ORB') {
-            this.itemBoxManager.spawnProjectile(pos, dir, 'HOMING_ORB', ai.profile.id, this.localKartPhysics.position);
-          }
+    const activeBots = this.aiRacers.filter(ai => !this.lapManager.getProgress(ai.profile.id)?.isFinished);
+    if (raceControl.canDrive) {
+      const opponents = racerPositions
+        .filter(r => !this.lapManager.getProgress(r.id)?.isFinished)
+        .map(r => ({id: r.id, position: r.position.clone()}));
+      for (const ai of activeBots) {
+        const progress = this.lapManager.getProgress(ai.profile.id);
+        if (progress && ai.recoverIfStuck(delta, progress.lastPassedCheckpoint, this.trackManager.checkpoints)) {
+          // A rescue cannot be counted as crossing a gate.
+          progress.prevPosition = undefined;
+          ai.physics.roadElevation = this.trackManager.getRoadHeightAt(ai.physics.position);
+        }
+        ai.update(delta, opponents, (item, target) => {
+          const liveTarget = target?.id === 'local_player' ? this.localKartPhysics.position :
+            activeBots.find(racer => racer.profile.id === target?.id)?.physics.position;
+          this.activatePowerUp(item, ai.profile.id, ai.physics, liveTarget);
         });
-
-        const aiConstraint = this.trackManager.getTrackConstraint(ai.physics.position);
-        ai.physics.applyTrackConstraint(aiConstraint, delta, ai.visual);
+        const constraint = this.trackManager.getTrackConstraint(ai.physics.position);
+        ai.physics.applyTrackConstraint(constraint, delta, ai.visual);
+        this.checkBoostPad(ai.physics);
       }
     }
 
@@ -772,13 +787,18 @@ export class GameEngine {
         onHit: () => {
           this.localKartPhysics.triggerSpinout();
         },
-        isLocalPlayer: true
+        isLocalPlayer: true,
+        canCollect: raceControl.canDrive && !store.telemetry.currentItem,
+        rank: raceControl.localRank
       },
-      ...this.aiRacers.map(ai => ({
+      ...activeBots.map(ai => ({
         id: ai.profile.id,
         position: ai.physics.position,
         onHit: () => ai.hitByHazard(),
-        isLocalPlayer: false
+        isLocalPlayer: false,
+        canCollect: raceControl.canDrive && !ai.heldPowerUp,
+        onCollect: (item: PowerUpType) => ai.collectItem(item),
+        rank: this.raceManager.ranks.find(r => r.id === ai.profile.id)?.rank
       }))
     ];
 

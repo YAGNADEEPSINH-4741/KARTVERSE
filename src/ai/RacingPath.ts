@@ -70,8 +70,7 @@ export class RacingPath {
   }
 
   // Look ahead along the path curve for steering target
-  public getTargetPosition(currentPos: THREE.Vector3, lookAheadUnits = 4, lateralOffset = 0): THREE.Vector3 {
-    const closestIdx = this.getClosestWaypointIndex(currentPos);
+  public getTargetPosition(currentPos: THREE.Vector3, lookAheadUnits = 4, lateralOffset = 0, closestIdx = this.getClosestWaypointIndex(currentPos)): THREE.Vector3 {
     const targetIdx = (closestIdx + lookAheadUnits) % this.waypoints.length;
     const wp = this.waypoints[targetIdx];
 

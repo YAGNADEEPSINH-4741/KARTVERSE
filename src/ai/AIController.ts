@@ -7,6 +7,7 @@ import { KartPhysics } from '../vehicles/KartPhysics';
 import { KartVisual, KartModelFactory } from '../vehicles/KartModels';
 import { RacingPath } from './RacingPath';
 import { PowerUpType } from '../items/PowerUpSystem';
+import type { CheckpointGate } from '../tracks/TrackManager';
 import { AIDifficulty } from '../store/gameStore';
 
 export interface AIRacerProfile {
@@ -28,6 +29,11 @@ export const AI_ROSTER: AIRacerProfile[] = [
   { id: 'ai_7', name: 'Frost Bite', kartId: 'speed_demon', color: '#38bdf8', aggression: 0.65, skill: 0.75 }
 ];
 
+export interface Opponent {
+  id: string;
+  position: THREE.Vector3;
+}
+
 export class AIRacer {
   public profile: AIRacerProfile;
   public physics: KartPhysics;
@@ -40,7 +46,32 @@ export class AIRacer {
   public lateralLane: number;
   public difficulty: AIDifficulty;
 
-  private itemCheckTimer = 0;
+  private itemHoldTime = 0;
+  private nitroTime = 0;
+  private nitroRecovery: number;
+  private preferredLane: number;
+  private lastCheckpoint = -1;
+  private secondsWithoutCheckpoint = 0;
+
+  public recoverIfStuck(delta: number, checkpoint: number, gates: readonly CheckpointGate[]): boolean {
+    if (checkpoint !== this.lastCheckpoint) {
+      this.lastCheckpoint = checkpoint;
+      this.secondsWithoutCheckpoint = 0;
+    }
+    this.secondsWithoutCheckpoint += delta;
+    if (this.secondsWithoutCheckpoint < 25) return false;
+
+    const gate = gates[Math.max(checkpoint, 0)];
+    this.physics.position.copy(gate.center).addScaledVector(gate.tangent, checkpoint < 0 ? -6 : 6);
+    this.physics.position.y += 0.3;
+    this.physics.rotationY = Math.atan2(gate.tangent.x, gate.tangent.z);
+    this.physics.speed = 0;
+    this.physics.velocity.set(0, 0, 0);
+    this.nitroTime = 0;
+    this.nitroRecovery = 2;
+    this.secondsWithoutCheckpoint = 0;
+    return true;
+  }
 
   constructor(
     scene: THREE.Scene,
@@ -53,7 +84,9 @@ export class AIRacer {
     this.profile = profile;
     this.path = path;
     this.difficulty = difficulty;
-    this.lateralLane = (Math.random() - 0.5) * 6.0; // Lane offset between -3.0 and +3.0m
+    this.preferredLane = (Math.random() - 0.5) * 6;
+    this.lateralLane = this.preferredLane;
+    this.nitroRecovery = 0.8 + Math.random() * 2;
 
     // Speed spec tuned by difficulty
     const topSpeedMod = difficulty === 'HARD' ? 38.0 : difficulty === 'MEDIUM' ? 34.0 : 29.0;
@@ -72,91 +105,81 @@ export class AIRacer {
     scene.add(this.visual.group);
   }
 
+  public collectItem(item: PowerUpType): void {
+    this.heldPowerUp = item;
+    this.itemHoldTime = 0;
+  }
+
   public update(
     delta: number,
-    leaderPos: THREE.Vector3,
-    playerDistanceAhead: number, // positive if player is ahead of this AI
-    onUseItem?: (type: PowerUpType, pos: THREE.Vector3, dir: THREE.Vector3) => void
+    opponents: readonly Opponent[],
+    onUseItem?: (type: PowerUpType, target?: Opponent) => void
   ): void {
-    // 1. Determine target navigation waypoint
-    const currentPos = this.physics.position;
-    this.currentWaypointIndex = this.path.getClosestWaypointIndex(currentPos);
-    this.progress = (this.lap - 1) * this.path.waypoints.length + this.currentWaypointIndex;
+    const { position, rotationY, speed, boost } = this.physics;
+    this.currentWaypointIndex = this.path.getClosestWaypointIndex(position);
+    const waypoints = this.path.waypoints;
+    const waypoint = waypoints[this.currentWaypointIndex];
+    const side = new THREE.Vector3().crossVectors(waypoint.tangent, new THREE.Vector3(0, 1, 0)).normalize();
 
-    const lookAheadUnits = this.difficulty === 'HARD' ? 6 : 4;
-    const targetPoint = this.path.getTargetPosition(currentPos, lookAheadUnits, this.lateralLane);
-
-    // 2. Compute steering angle towards target
-    const toTarget = targetPoint.clone().sub(currentPos);
-    const targetHeading = Math.atan2(toTarget.x, toTarget.z);
-
-    let angleDiff = targetHeading - this.physics.rotationY;
-    // Normalize angleDiff to [-PI, PI]
-    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-    const steerInput = THREE.MathUtils.clamp(angleDiff * 2.5, -1, 1);
-
-    // 3. Throttle & dynamic rubberband adjustment
-    let throttle = 1.0;
-    const curvature = this.path.waypoints[this.currentWaypointIndex].curvature;
-
-    // Brake / drift if approaching a sharp hairpin turn
-    let wantsDrift = false;
-    if (Math.abs(angleDiff) > 0.55 && curvature > 0.25) {
-      if (this.difficulty !== 'EASY') {
-        wantsDrift = true;
-      } else {
-        throttle = 0.65;
+    let ahead: Opponent | undefined;
+    let aheadDistance = 42;
+    let trailing = false;
+    let blockingSide: number | undefined;
+    for (const opponent of opponents) {
+      if (opponent.id === this.profile.id) continue;
+      const offset = opponent.position.clone().sub(position);
+      const distance = offset.length();
+      const longitudinal = offset.dot(waypoint.tangent);
+      const lateral = offset.dot(side);
+      if (distance < aheadDistance && longitudinal > 3 && Math.abs(lateral) < 12) {
+        ahead = opponent;
+        aheadDistance = distance;
+        blockingSide = Math.abs(lateral) < 4 ? lateral : undefined;
       }
+      if (distance < 26 && longitudinal < -2 && Math.abs(lateral) < 5) trailing = true;
     }
 
-    // Dynamic Rubberband: keep race compact and exciting!
-    if (this.difficulty === 'HARD') {
-      if (playerDistanceAhead > 30) {
-        // Player is way ahead: AI catches up!
-        this.physics.boost.trigger('PAD', 1.25, 2.0);
-      }
-    } else if (this.difficulty === 'EASY') {
-      if (playerDistanceAhead < -25) {
-        // AI is too far ahead of player: ease up
-        throttle = 0.6;
-      }
+    const passing = aheadDistance < 14 && blockingSide !== undefined;
+    const passingSide = blockingSide === 0 ? Math.sign(this.preferredLane) || 1 : -(Math.sign(blockingSide ?? 0));
+    const upcoming = waypoints[(this.currentWaypointIndex + 2) % waypoints.length];
+    const curvature = Math.max(waypoint.curvature, upcoming.curvature);
+    const lane = passing && curvature < 0.3 ? passingSide * Math.min(4, waypoint.roadWidth * 0.28)
+      : this.preferredLane * (1 - Math.min(0.9, curvature * 1.7));
+    this.lateralLane = THREE.MathUtils.lerp(this.lateralLane, lane, Math.min(1, delta * 2));
+    const lookAhead = curvature > 0.27 ? 2 : speed > 28 ? 4 : 3;
+    const target = this.path.getTargetPosition(position, lookAhead, this.lateralLane, this.currentWaypointIndex);
+    const heading = Math.atan2(target.x - position.x, target.z - position.z);
+    const angle = Math.atan2(Math.sin(heading - rotationY), Math.cos(heading - rotationY));
+    const turn = Math.max(curvature, Math.abs(angle) * 0.6);
+    const steer = THREE.MathUtils.clamp(angle * 2.5, -1, 1);
+    const drift = this.difficulty !== 'EASY' && turn > 0.25 && Math.abs(angle) > 0.22 && speed > 15;
+    const cornerSpeed = THREE.MathUtils.lerp(this.physics.specs.topSpeed, 13 + this.profile.skill * 8, Math.min(1, turn * 1.55));
+    const throttle = speed > cornerSpeed + 5 ? -0.4 : speed > cornerSpeed ? 0.35 : 1;
+
+    const clearStraight = turn < 0.17 && aheadDistance > 11;
+    this.nitroRecovery = Math.max(0, this.nitroRecovery - delta);
+    if (this.nitroTime > 0) {
+      this.nitroTime = clearStraight ? Math.max(0, this.nitroTime - delta) : 0;
+    } else if (clearStraight && speed > 10 && boost.nitroPercent > 35 &&
+               boost.boostTimeRemaining <= 0 && this.nitroRecovery === 0) {
+      this.nitroTime = 0.75 + this.profile.aggression * 0.85;
+      this.nitroRecovery = this.nitroTime + (this.difficulty === 'EASY' ? 6 : this.difficulty === 'HARD' ? 2 : 3.5);
     }
+    this.physics.update(delta, throttle, steer, drift, this.nitroTime > 0, this.visual, throttle < 0);
 
-    // Wants Nitro trigger
-    const wantsNitro = Math.random() < (this.difficulty === 'HARD' ? 0.05 : 0.01);
-
-    // 4. Update Physics
-    this.physics.update(delta, throttle, steerInput, wantsDrift, wantsNitro, this.visual);
-
-    // 5. Intelligent item deployment
-    this.itemCheckTimer += delta;
-    if (this.itemCheckTimer > 1.5 && this.heldPowerUp && onUseItem) {
-      this.itemCheckTimer = 0;
-      const fwd = new THREE.Vector3(Math.sin(this.physics.rotationY), 0, Math.cos(this.physics.rotationY));
-
-      if (this.heldPowerUp === 'ROCKET_BOOST' || this.heldPowerUp === 'TURBO_CHARGE') {
-        // Use immediately on straightaways
-        if (curvature < 0.2) {
-          this.physics.boost.trigger('PAD', 1.4, 2.5);
-          this.heldPowerUp = null;
-        }
-      } else if (this.heldPowerUp === 'OIL_TRAP') {
-        // Drop behind if anyone is close behind
-        if (playerDistanceAhead < 0 && playerDistanceAhead > -30) {
-          onUseItem('OIL_TRAP', this.physics.position, fwd);
-          this.heldPowerUp = null;
-        }
-      } else if (this.heldPowerUp === 'HOMING_ORB') {
-        // Fire forward at leader/player ahead
-        if (playerDistanceAhead > 10) {
-          onUseItem('HOMING_ORB', this.physics.position, fwd);
-          this.heldPowerUp = null;
-        }
-      } else if (this.heldPowerUp === 'SHIELD') {
-        this.heldPowerUp = null;
-      }
+    const item = this.heldPowerUp;
+    if (!item || !onUseItem) return;
+    this.itemHoldTime += delta;
+    if (this.itemHoldTime < 0.5 + (1 - this.profile.aggression)) return;
+    const heldLong = this.itemHoldTime > 7;
+    const ready = item === 'OIL_TRAP' ? trailing || heldLong
+      : item === 'HOMING_ORB' ? !!ahead || heldLong
+      : item === 'SHIELD' ? trailing || aheadDistance < 18 || heldLong
+      : item === 'LIGHTNING_PULSE' ? !!ahead || trailing || heldLong
+      : (clearStraight || (heldLong && turn < 0.3)) && !boost.isNitroActive;
+    if (ready) {
+      this.heldPowerUp = null;
+      onUseItem(item, ahead);
     }
   }
 

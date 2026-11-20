@@ -151,8 +151,34 @@ async function runGameplayTests() {
 
   // Update AI for 60 frames
   for (let i = 0; i < 60; i++) {
-    ai.update(1 / 60, new THREE.Vector3(0, 0, 20), 10);
+    ai.update(1 / 60, [{id: "opponent", position: new THREE.Vector3(0, 0, 20)}]);
   }
+  // A bot receives the item from the same pickup collision used by the player.
+  items.update(0.016, [{
+    id: ai.profile.id, position: firstBox.position, rank: 8,
+    onCollect: item => ai.collectItem(item)
+  }]);
+  assert.ok(ai.heldPowerUp);
+  assert.equal(firstBox.active, false);
+
+  // An autonomous bot can choose another bot as its target.
+  ai.collectItem('HOMING_ORB');
+  let targetId: string | undefined;
+  for (let frame = 0; frame < 90 && !targetId; frame++) {
+    const wp = racingPath.waypoints[racingPath.getClosestWaypointIndex(ai.physics.position)];
+    const rival = ai.physics.position.clone().addScaledVector(wp.tangent, 24);
+    ai.update(1 / 60, [{id: AI_ROSTER[1].id, position: rival}], (item, target) => {
+      assert.equal(item, 'HOMING_ORB');
+      targetId = target?.id;
+    });
+  }
+  assert.equal(targetId, AI_ROSTER[1].id);
+  assert.equal(ai.heldPowerUp, null);
+  ai.physics.activateShield();
+  ai.hitByHazard();
+  assert.equal(ai.physics.isSpinningOut, false);
+  ai.hitByHazard();
+  assert.equal(ai.physics.isSpinningOut, true);
   console.log(`  ✅ AI Bot "${ai.profile.name}" navigated ${ai.currentWaypointIndex} waypoints on spline.`);
 
   console.log('\n🎉 ALL CORE ENGINE & GAMEPLAY TESTS PASSED (6/6)! 🏆\n');
