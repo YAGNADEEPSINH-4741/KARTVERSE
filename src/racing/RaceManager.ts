@@ -105,6 +105,7 @@ export class RaceManager {
       name: r.name,
       rank: r.rank,
       lap: r.lap,
+      isFinished: r.isFinished,
       isPlayer: r.id === localPlayerId
     }));
 

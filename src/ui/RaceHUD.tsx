@@ -83,7 +83,7 @@ export function RaceHUD({ onExit }: { onExit: () => void }) {
             {t.leaderboard?.map((row) => (
               <li key={row.id} className={row.isPlayer ? 'self' : ''}>
                 <b>{row.rank}</b>
-                <span>{row.name}</span>
+                <span>{row.name}{row.isFinished && ' · Finished'}</span>
               </li>
             ))}
           </ol>
@@ -139,7 +139,7 @@ export function RaceHUD({ onExit }: { onExit: () => void }) {
             <kbd>Shift</kbd> Drift
           </span>
           <span>
-            <kbd>N</kbd> Nitro
+            <kbd>Space</kbd> Nitro
           </span>
         </div>
       )}

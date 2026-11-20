@@ -47,6 +47,7 @@ export class SocketManager {
   private localPlayerId: string =
     'player_' + Math.random().toString(36).substring(2, 9);
   private lastTelemetryTime = 0;
+  private finalTelemetry?: RemoteTelemetryPacket;
   private currentRoomCode: string | null = null;
   private heartbeatInterval: any = null;
   private healthCheckInterval: any = null;
@@ -196,8 +197,7 @@ export class SocketManager {
           const p = items[items.length - 1]; // Latest presence packet
           const pId = p.id || key;
           if (!seen.has(pId) && !this.departed.has(pId)) {
-            if (!this.lastHeartbeatMap.has(pId))
-              this.lastHeartbeatMap.set(pId, Date.now());
+            this.lastHeartbeatMap.set(pId, Date.now());
             seen.add(pId);
             playerList.push({
               id: pId,
@@ -213,27 +213,15 @@ export class SocketManager {
         }
       }
 
-      // Ensure local player is in the list
-      if (!seen.has(localPlayer.id)) {
-        playerList.push(
-          useGameStore
-            .getState()
-            .roomPlayers.find((p) => p.id === localPlayer.id) || localPlayer,
-        );
-      }
+      const currentLocal = useGameStore.getState().roomPlayers.find(p => p.id === localPlayer.id) || localPlayer;
+      const localIndex = playerList.findIndex(p => p.id === localPlayer.id);
+      if (localIndex === -1) playerList.push(currentLocal);
+      else playerList[localIndex] = currentLocal;
 
-      // Preserve active players during live race if presence temporarily drops
-      const currentScreen = useGameStore.getState().currentScreen;
-      if (['QUICK_RACE', 'GRAND_PRIX'].includes(currentScreen)) {
-        const existing = useGameStore.getState().roomPlayers;
-        for (const exp of existing) {
-          if (!playerList.some((p) => p.id === exp.id)) {
-            const lastSeen = this.lastHeartbeatMap.get(exp.id) || 0;
-            // Retain player if they sent telemetry/heartbeat recently (within 15s)
-            if (Date.now() - lastSeen < 15000) {
-              playerList.push(exp);
-            }
-          }
+      // Presence snapshots can briefly omit peers while a ready update or rejoin is in flight.
+      for (const player of useGameStore.getState().roomPlayers) {
+        if (!this.departed.has(player.id) && !playerList.some(p => p.id === player.id)) {
+          playerList.push(player);
         }
       }
 
@@ -258,6 +246,7 @@ export class SocketManager {
             payload.player.id,
           );
           const store = useGameStore.getState();
+          this.lastHeartbeatMap.set(payload.player.id, Date.now());
           const current = store.roomPlayers;
           if (!current.some((p) => p.id === payload.player.id)) {
             const updated = [...current, payload.player].sort(
@@ -295,9 +284,12 @@ export class SocketManager {
             'players',
           );
           const store = useGameStore.getState();
-          const map = new Map<string, MultiplayerPlayer>();
+          const map = new Map(store.roomPlayers.map(p => [p.id, p]));
           for (const p of payload.players) {
-            if (!this.departed.has(p.id)) map.set(p.id, p);
+            if (!this.departed.has(p.id) && !map.has(p.id)) {
+              this.lastHeartbeatMap.set(p.id, Date.now());
+              map.set(p.id, p);
+            }
           }
           // Ensure local player stays intact
           const local =
@@ -423,8 +415,12 @@ export class SocketManager {
       'broadcast',
       { event: 'player_heartbeat' },
       ({ payload }) => {
-        if (payload && payload.id && payload.id !== this.localPlayerId) {
+        if (payload?.id && payload.id !== this.localPlayerId && !this.departed.has(payload.id)) {
           this.lastHeartbeatMap.set(payload.id, Date.now());
+          const store = useGameStore.getState();
+          if (payload.player?.id === payload.id && !store.roomPlayers.some(p => p.id === payload.id)) {
+            store.setRoomPlayers([...store.roomPlayers, payload.player]);
+          }
         }
       },
     );
@@ -438,6 +434,10 @@ export class SocketManager {
           console.log(
             `[MULTIPLAYER] Inbound player_left notification: ${payload.id}, reason: ${payload.reason}`,
           );
+          const finish = payload.finish;
+          if (finish?.playerId === payload.id && finish.progress?.finished && !this.departed.has(payload.id)) {
+            this.onRemoteTelemetry?.(finish);
+          }
           this.removePeer(payload.id, payload.reason || 'LEFT');
         }
       },
@@ -490,7 +490,7 @@ export class SocketManager {
               .send({
                 type: 'broadcast',
                 event: 'player_join',
-                payload: { player: localPlayer },
+                payload: { player: useGameStore.getState().roomPlayers.find(p => p.id === localPlayer.id) || localPlayer },
               })
               .catch(() => {});
           };
@@ -536,38 +536,33 @@ export class SocketManager {
   }
 
   private sendHeartbeat(localPlayer: MultiplayerPlayer): void {
-    if (!this.supabaseChannel) return;
+    if (this.supabaseChannel?.state !== 'joined') return;
+    const player = useGameStore.getState().roomPlayers.find(p => p.id === localPlayer.id) || localPlayer;
     // Broadcast ping to all connected peers
     this.supabaseChannel
       .send({
         type: 'broadcast',
         event: 'player_heartbeat',
-        payload: { id: this.localPlayerId, timestamp: Date.now() },
+        payload: { id: this.localPlayerId, player },
       })
       .catch(() => {});
   }
 
   private checkRemoteRacersHealth(): void {
+    const channel = this.supabaseChannel;
+    if (channel?.state !== 'joined') return;
+    const present = new Set(Object.values(channel.presenceState<MultiplayerPlayer>())
+      .flat().map(player => player.id));
     const now = Date.now();
-    const currentScreen = useGameStore.getState().currentScreen;
-    // Health check active in lobby and racing screens
-    const roomPlayers = useGameStore.getState().roomPlayers;
-
-    for (const p of roomPlayers) {
-      if (p.id === this.localPlayerId) continue;
-      const lastSeen = this.lastHeartbeatMap.get(p.id);
-      // If we have seen them before and they have sent no packet for > 15 seconds
-      if (lastSeen && now - lastSeen > 15000) {
-        console.warn(
-          `[MULTIPLAYER] Player ${p.id} (${p.username}) timed out after 15s`,
-        );
-        this.removePeer(p.id, 'TIMEOUT');
-      }
+    for (const player of useGameStore.getState().roomPlayers) {
+      if (player.id === this.localPlayerId || present.has(player.id)) continue;
+      const lastSeen = this.lastHeartbeatMap.get(player.id);
+      if (lastSeen !== undefined && now - lastSeen > 45000) this.removePeer(player.id, 'TIMEOUT');
     }
   }
 
   private removePeer(id: string, reason: string) {
-    this.departed.add(id);
+    if (reason !== 'TIMEOUT') this.departed.add(id);
     this.lastHeartbeatMap.delete(id);
     const store = useGameStore.getState();
     store.setRoomPlayers(
@@ -601,13 +596,13 @@ export class SocketManager {
   public async leaveRace(reason = 'USER_EXIT'): Promise<void> {
     const channel = this.supabaseChannel;
     if (channel?.state === 'joined') {
-      void channel.send({
+      await Promise.race([channel.send({
         type: 'broadcast',
         event: 'player_left',
-        payload: { id: this.localPlayerId, reason },
-      });
+        payload: { id: this.localPlayerId, reason, finish: this.finalTelemetry },
+      }).catch(() => {}), new Promise(resolve => setTimeout(resolve, 300))]);
     }
-    this.disconnect();
+    if (this.supabaseChannel === channel) this.disconnect();
   }
 
   // ==========================================================================
@@ -678,13 +673,17 @@ export class SocketManager {
   // ==========================================================================
   public sendTelemetry(
     telemetry: Omit<RemoteTelemetryPacket, 'playerId' | 'timestamp'>,
+    immediate = false,
   ): void {
     const now = performance.now();
-    // Throttle to ~30Hz (every 33ms) for smooth zero-lag synchronization
-    if (now - this.lastTelemetryTime < 32) return;
+    // Bound realtime traffic while interpolation smooths motion between packets.
+    if (!immediate && now - this.lastTelemetryTime < 85) return;
     this.lastTelemetryTime = now;
+    if (telemetry.progress?.finished) {
+      this.finalTelemetry = {...telemetry, playerId: this.getLocalPlayerId(), timestamp: Date.now()};
+    }
 
-    if (this.supabaseChannel) {
+    if (this.supabaseChannel?.state === 'joined') {
       this.supabaseChannel
         .send({
           type: 'broadcast',
@@ -706,7 +705,8 @@ export class SocketManager {
     }
 
     if (this.socket && this.socket.connected && this.currentRoomCode) {
-      this.socket.emit('telemetry', {
+      const socket = immediate ? this.socket : this.socket.volatile;
+      socket.emit('telemetry', {
         code: this.currentRoomCode,
         data: {
           x: telemetry.position.x,
@@ -827,6 +827,7 @@ export class SocketManager {
     this.stopHeartbeat();
     this.lastHeartbeatMap.clear();
     this.departed.clear();
+    this.finalTelemetry = undefined;
     this.opened?.(false);
     useGameStore.getState().setMultiplayerRoom(null, false);
     const ch = this.supabaseChannel;

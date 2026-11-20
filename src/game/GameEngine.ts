@@ -397,6 +397,7 @@ export class GameEngine {
         entity.visual.group.rotation.y = slot.rotationY;
 
         this.lapManager.registerRacer(player.id, player.username || `Racer ${idx + 2}`);
+        this.remoteProgress.add(player.id);
       });
 
       socketManager.onRemoteTelemetry = (packet) => {
@@ -405,6 +406,7 @@ export class GameEngine {
           if (!pInfo) return;
           this.networkSync.registerRemotePlayer(pInfo.id, pInfo.kartId, pInfo.kartColor, pInfo.username, pInfo.isHost);
           this.lapManager.registerRacer(packet.playerId, pInfo.username);
+          this.remoteProgress.add(packet.playerId);
         }
         this.networkSync.handleTelemetry(packet);
         const progress = this.lapManager.getProgress(packet.playerId)!;
@@ -457,7 +459,8 @@ export class GameEngine {
     this.remoteProgress.delete(playerId);
 
     // 2. Remove from lap manager
-    this.lapManager.removeRacer(playerId);
+    const completed = this.lapManager.getProgress(playerId)?.isFinished;
+    if (!completed) this.lapManager.removeRacer(playerId);
 
     // 3. Filter roomPlayers in store
     const store = useGameStore.getState();
@@ -470,7 +473,8 @@ export class GameEngine {
 
       // Auto-Win: If only 1 player remains in multiplayer race, declare victory!
       if (store.raceMode === 'MULTIPLAYER' && (this.raceManager.state === 'RACING' || this.raceManager.state === 'COUNTDOWN')) {
-        if (this.networkSync.remotePlayers.size === 0) {
+        const hasFinisher = Array.from(this.lapManager.progressMap.values()).some(p => p.isFinished);
+        if (!hasFinisher && reason !== 'TIMEOUT' && this.networkSync.remotePlayers.size === 0) {
           console.log('[AUTO-WIN] All opponents left! Local player automatically wins 1st place 🏆');
           this.raceManager.finishRace('local_player', 1);
           return;
@@ -512,7 +516,7 @@ export class GameEngine {
       this.keys[e.code] = true;
 
       if (this.mode === 'RACING') {
-        if (e.code === 'Space' || e.code === 'KeyE') {
+        if (e.code === 'KeyE' && !e.repeat) {
           this.useHeldPowerUp();
         }
         if (e.code === 'KeyR') {
@@ -617,10 +621,10 @@ export class GameEngine {
     }
   }
 
-  private publishTelemetry(delta: number): void {
+  private publishTelemetry(delta: number, immediate = false): void {
     this.telemetrySendTimer += delta;
     const finished = this.raceManager.state === 'FINISHED';
-    if (this.telemetrySendTimer < (finished ? .25 : .033)) return;
+    if (!immediate && this.telemetrySendTimer < (finished ? .25 : .085)) return;
     this.telemetrySendTimer = 0;
     const kart = this.localKartPhysics;
     const p = this.lapManager.getProgress('local_player')!;
@@ -629,7 +633,7 @@ export class GameEngine {
       rotationY: kart.rotationY, speed: finished ? 0 : kart.speed,
       driftLevel: kart.drift.getLevel(), pitch: kart.pitch, roll: kart.roll,
       progress: {lap: p.lap, checkpoint: p.lastPassedCheckpoint, time: p.totalRaceTime, best: p.bestLapTime, finished: p.isFinished}
-    });
+    }, immediate);
   }
 
   private updateRace(delta: number): void {
@@ -659,7 +663,7 @@ export class GameEngine {
     }
 
     const wantsDrift = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight'] || touchControls.drift);
-    const wantsNitro = !!(this.keys['KeyN'] || this.keys['KeyF'] || touchControls.nitro);
+    const wantsNitro = !!(this.keys['Space'] || touchControls.nitro);
 
     if (touchControls.useItem) {
       touchControls.useItem = false;
@@ -699,11 +703,17 @@ export class GameEngine {
       );
       racerPositions.push({ id, position: remote.currentPosition, forward: remoteFwd });
     }
+    // Keep a finish in the standings after its owner leaves the room.
+    for (const [id, progress] of this.lapManager.progressMap) {
+      if (id !== 'local_player' && progress.isFinished && !racerPositions.some(racer => racer.id === id)) {
+        racerPositions.push({id, position: this.trackManager.checkpoints[0].center, forward});
+      }
+    }
 
     // 4. Update Race Coordinator
     const raceControl = this.raceManager.update(delta, racerPositions, 'local_player', forward, this.remoteProgress);
     if (store.raceStatus !== 'FINISHED' && useGameStore.getState().raceStatus === 'FINISHED') {
-      if (store.raceMode === 'MULTIPLAYER') this.publishTelemetry(1);
+      if (store.raceMode === 'MULTIPLAYER') this.publishTelemetry(0, true);
       audio.stopEngine();
       return;
     }
@@ -752,7 +762,6 @@ export class GameEngine {
       this.networkSync.update(delta);
 
       this.publishTelemetry(delta);
-
     }
 
     // 9. Update Item Boxes, Hazards & Pickups

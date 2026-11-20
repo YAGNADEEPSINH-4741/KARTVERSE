@@ -38,6 +38,7 @@ export interface LeaderboardEntry {
   rank: number;
   lap: number;
   isPlayer: boolean;
+  isFinished?: boolean;
   isHost?: boolean;
 }
 

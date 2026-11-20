@@ -27,7 +27,7 @@
 
 - **🔥 Nitrous Oxide Boost State Machine**:
   - 4-state engine: `READY`, `ACTIVE`, `COOLDOWN`, `RECHARGING`.
-  - Press `N` or `F` for immediate +160% forward thrust, +48% top speed, camera FOV kick (+8°), radial speed lines, and twin exhaust thruster flames.
+  - Press `Space` for immediate +160% forward thrust, +48% top speed, camera FOV kick (+8°), radial speed lines, and twin exhaust thruster flames.
 
 - **🏝️ 5 Handcrafted Circuits & Procedural Splines**:
   - **Sunset Island Circuit** (Harbor straight, coastal esses, headland hairpin, cliff tunnel and cable-stayed crossing).
@@ -64,8 +64,8 @@
 | **Brake / Reverse** | <kbd>S</kbd> | <kbd>↓</kbd> |
 | **Steer Left / Right** | <kbd>A</kbd> / <kbd>D</kbd> | <kbd>←</kbd> / <kbd>→</kbd> |
 | **Power Slide / Drift** | <kbd>Shift</kbd> | — |
-| **Use Power-Up Item** | <kbd>Space</kbd> | <kbd>E</kbd> |
-| **Nitro Boost** | <kbd>N</kbd> | <kbd>F</kbd> |
+| **Use Power-Up Item** | <kbd>E</kbd> | — |
+| **Nitro Boost** | <kbd>Space</kbd> | — |
 | **Reset to Track** | <kbd>R</kbd> | — |
 
 ---

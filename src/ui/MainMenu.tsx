@@ -66,8 +66,8 @@ const keys = [
   ['A D / ← →', 'Steer'],
   ['S / ↓', 'Brake and reverse'],
   ['Shift', 'Drift'],
-  ['N / F', 'Nitro'],
-  ['E / Space', 'Use item'],
+  ['Space', 'Nitro'],
+  ['E', 'Use item'],
   ['R', 'Return to track'],
 ];
 export const MainMenu = () => {
